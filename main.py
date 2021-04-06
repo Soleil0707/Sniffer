@@ -23,7 +23,6 @@ if __name__ == '__main__':
             routingNicMacAddr = netifaces.ifaddresses(interface)[netifaces.AF_LINK][0]['addr']
             try:
                 routingIPAddr = netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr']
-                # TODO(Guodong Ding) Note: On Windows, netmask maybe give a wrong result in 'netifaces' module.
                 routingIPNetmask = netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['netmask']
             except KeyError:
                 pass
