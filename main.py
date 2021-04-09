@@ -1,9 +1,31 @@
+import time
+
 import netifaces
 import psutil
+import multiprocessing
+from sniffer import mySniffer
 
 
 # 获取网卡名称和其ip地址，不包括回环
 def get_netcard():
+    routingNicName = netifaces.gateways()['default'][netifaces.AF_INET][1]
+
+    # netifaces.interfaces——列举所有的设备名称
+    for interface in netifaces.interfaces():
+        if interface == routingNicName:
+            # netifaces.ifaddresses(interface)——获得设备对应的IP地址
+            # AF_LINK表示链路层地址
+            # AF_INET表示IPv4地址
+            # AF_INET6表示IPv6地址
+            try:
+                routingNicMacAddr = netifaces.ifaddresses(interface)[netifaces.AF_LINK][0]['addr']
+                routingIPAddr = netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr']
+            except KeyError:
+                pass
+    display_format = '%-30s %-20s'
+    print(display_format % ("Routing NIC Name:", routingNicName))
+    print(display_format % ("Routing IP Address:", routingIPAddr))
+
     netcard_info = []
     info = psutil.net_if_addrs()
     for k, v in info.items():
@@ -13,27 +35,32 @@ def get_netcard():
     return netcard_info
 
 
+def run_sniffer(sniffer, packet_queue):
+    # l2_type, packet, time = sniffer.get_one_packet()
+    # TODO 进程同步相关操作
+    while True:
+        packet_queue.put(sniffer.get_one_packet())
+
+
 if __name__ == '__main__':
-    routingGateway = netifaces.gateways()['default'][netifaces.AF_INET][0]
-    routingNicName = netifaces.gateways()['default'][netifaces.AF_INET][1]
-
-    for interface in netifaces.interfaces():
-        if interface == routingNicName:
-            # print netifaces.ifaddresses(interface)
-            routingNicMacAddr = netifaces.ifaddresses(interface)[netifaces.AF_LINK][0]['addr']
-            try:
-                routingIPAddr = netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr']
-                routingIPNetmask = netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['netmask']
-            except KeyError:
-                pass
-    display_format = '%-30s %-20s'
-    print(display_format % ("Routing Gateway:", routingGateway))
-    print(display_format % ("Routing NIC Name:", routingNicName))
-    print(display_format % ("Routing NIC MAC Address:", routingNicMacAddr))
-    print(display_format % ("Routing IP Address:", routingIPAddr))
-    print(display_format % ("Routing IP Netmask:", routingIPNetmask))
-
+    # 测试打印网卡信息
     print(get_netcard())
+
+    sniffer = mySniffer()
+    sniffer.show_all_ifaces()
+    sniffer.create_socket(14)
+
+    # 进程共享队列，sniffer存储抓到的数据包，parse读取解析
+    packet_wait_queue = multiprocessing.Queue()
+    sniffer_process = multiprocessing.Process(target=run_sniffer, args=(sniffer, packet_wait_queue))
+
+    sniffer_process.start()
+    sniffer_controller = psutil.Process(sniffer_process.pid)
+    sniffer_controller.suspend()
+    sniffer_controller.resume()
+
+    time.sleep(10)
+
 
 
 
