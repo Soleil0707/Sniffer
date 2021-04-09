@@ -1,9 +1,9 @@
 import time
-
 import netifaces
 import psutil
-import multiprocessing
 from sniffer import mySniffer
+from sniffer import sniffer_thread
+from queue import Queue
 
 
 # 获取网卡名称和其ip地址，不包括回环
@@ -35,13 +35,6 @@ def get_netcard():
     return netcard_info
 
 
-def run_sniffer(sniffer, packet_queue):
-    # l2_type, packet, time = sniffer.get_one_packet()
-    # TODO 进程同步相关操作
-    while True:
-        packet_queue.put(sniffer.get_one_packet())
-
-
 if __name__ == '__main__':
     # 测试打印网卡信息
     print(get_netcard())
@@ -50,16 +43,15 @@ if __name__ == '__main__':
     sniffer.show_all_ifaces()
     sniffer.create_socket(14)
 
-    # 进程共享队列，sniffer存储抓到的数据包，parse读取解析
-    packet_wait_queue = multiprocessing.Queue()
-    sniffer_process = multiprocessing.Process(target=run_sniffer, args=(sniffer, packet_wait_queue))
-
+    # 共享队列，sniffer存储抓到的数据包，parse读取解析
+    packet_wait_queue = Queue()
+    sniffer_process = sniffer_thread(packet_wait_queue, sniffer)
     sniffer_process.start()
-    sniffer_controller = psutil.Process(sniffer_process.pid)
-    sniffer_controller.suspend()
-    sniffer_controller.resume()
+    time.sleep(3)
+    sniffer_process.stop()
+    print(packet_wait_queue.qsize())
 
-    time.sleep(10)
+    #TODO: packet_wait_queue保存的是数据包，开始进行解析
 
 
 
