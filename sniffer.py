@@ -19,8 +19,11 @@ class sniffer_thread(threading.Thread):
         while self.__running.isSet():
             self.__flag.wait()      # 为True时立即返回, 为False时阻塞直到内部的标识位为True后返回
             # TODO 进程同步相关操作
-            self.packet_queue.put(self.sniffer.get_one_packet())
-            print("get a packet")
+            l2_type, l2_packet, time = self.sniffer.get_one_packet()
+            # 网络流量不大时，数据包不多，recv_raw可能返回None
+            if l2_packet is not None:
+                self.packet_queue.put((l2_type, l2_packet, time))
+                print("get a packet")
 
     def pause(self):
         """ 线程暂停 """
@@ -62,10 +65,11 @@ class mySniffer:
         """
         # TODO: 考虑抓包效率，可能会丢包
         # 调用这个函数 抓取一个数据包
-        while True:
-            type, packet, time = self.socket.recv_raw()
-            # 网络流量不大时，数据包不多，recv_raw可能返回None
-            if packet is None:
-                continue
-            else:
-                return type, packet, time
+        return self.socket.recv_raw()
+        # while True:
+        #     type, packet, time = self.socket.recv_raw()
+        #     # 网络流量不大时，数据包不多，recv_raw可能返回None
+        #     if packet is None:
+        #         continue
+        #     else:
+        #         return type, packet, time
