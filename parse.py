@@ -8,6 +8,52 @@ I   32bit
 """
 
 
+def parse_pacp_file(filename):
+    pcap = open(filename, 'rb')
+    pcap_header = pcap.read(24)
+
+    pkt_header = pcap.read(16)
+    time1, time2, capLen, pktLen = unpack("IIII", pkt_header)
+    l2_packet = pcap.read(pktLen)
+    parse_a_packet(l2_packet)
+
+
+def parse_a_packet(packet):
+    # 解析数据包的链路层
+    ip_packet, eth_header = parse_eth(packet)
+
+    if eth_header[2] == '0x0800':
+        trans_packet, ip_header = parse_ipv4(ip_packet)
+
+        if ip_header['Protocol'] == 6:
+            # 解析tcp
+            app_packet, tcp_header = parse_tcp(trans_packet)
+        elif ip_header['Protocol'] == 17:
+            # 解析udp
+            app_packet, udp_header = parse_udp(trans_packet)
+        elif ip_header['Protocol'] == 1:
+            # 解析icmp
+            icmp_header = parse_icmp(trans_packet)
+        else:
+            # 其他类型的协议，未实现
+            print("unknown l4-protocol with protocol:", ip_header['Protocol'], 'in ipv4 header')
+    elif eth_header[2] == '0x0806':
+        arp_header = parse_arp(ip_packet)
+        # print("[ARP] protocol(", eth_header[2], ") can't parse now")
+    elif eth_header[2] == '0x86dd':
+        parse_ipv6(ip_packet)
+        # print("[IPv6] protocol(", eth_header[2], ") can't parse now")
+    elif eth_header[2] == '0x8864':
+        print("[PPPoE] protocol(", eth_header[2], ") can't parse now")
+    elif eth_header[2] == '0x8100':
+        print("[802.1Q tag] protocol(", eth_header[2], ") can't parse now")
+    elif eth_header[2] == '0x8847':
+        print("[MPLS Label] protocol(", eth_header[2], ") can't parse now")
+    else:
+        # unknown ip protocol
+        print("unknown ip protocol with type:", eth_header[2])
+
+
 def bytes2mac_addr(addr):
     """将字节流转为MAC地址字符串"""
     return ":".join("%02x" % i for i in addr)
