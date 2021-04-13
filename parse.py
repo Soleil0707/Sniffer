@@ -39,5 +39,28 @@ def parse_ipv4(packet):
     :return:
     """
     ip_header = packet[:20]
-    ip_header = unpack("!BBHHHBBHII", ip_header)
-    print(bytes2uint(ip_header[0]))
+    ip_header_info = unpack("!BBHHHBBH4s4s", ip_header)
+
+    ip_header = {}
+    ip_header['Version'] = ip_header_info[0] >> 4
+    # 单位是4Bytes
+    ip_header['Header Length'] = ip_header_info[0] & 0x0f
+    ip_header['Differentiated Services Field'] = ip_header_info[1]
+    # 单位是Byte，包括ip头部和数据部分长度
+    ip_header['Total Length'] = ip_header_info[2]
+    ip_header['Identification'] = ip_header_info[3]
+    ip_header['Flags'] = ip_header_info[4] >> 13
+    ip_header['Fragment Offset'] = ip_header_info[4] & 0x1fff
+    ip_header['Time to Live'] = ip_header_info[5]
+    ip_header['Protocol'] = ip_header_info[6]
+    ip_header['Header Checksum'] = ip_header_info[7]
+    ip_header['Source Address'] = inet_ntoa(ip_header_info[8])
+    ip_header['Destination Address'] = inet_ntoa(ip_header_info[9])
+    # 头部没有Option可选部分
+    if ip_header['Header Length'] == 5:
+        # 返回下一层数据包和ip头部信息
+        return packet[20:], ip_header
+    else:
+        # TODO 解析Option可选字段
+        option = packet[20:ip_header['Header Length']*4]
+        return packet[ip_header['Header Length']*4:], ip_header

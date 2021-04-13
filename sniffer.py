@@ -51,6 +51,7 @@ class mySniffer:
         self.iface = scapy.IFACES.dev_from_index(index)
         # TODO 可以和init函数合并
         # 进行绑定，便于抓包
+        # scapy.conf.iface.setmonitor(True)
         self.socket = scapy.conf.L2socket(iface=self.iface)
 
     def get_one_packet(self):
@@ -61,4 +62,10 @@ class mySniffer:
         """
         # TODO: 考虑抓包效率，可能会丢包
         # 调用这个函数 抓取一个数据包
-        return self.socket.recv_raw()
+        while True:
+            type, packet, time = self.socket.recv_raw()
+            # 网络流量不大时，数据包不多，recv_raw可能返回None
+            if packet is None:
+                continue
+            else:
+                return type, packet, time

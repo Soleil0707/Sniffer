@@ -42,7 +42,7 @@ if __name__ == '__main__':
 
     sniffer = mySniffer()
     sniffer.show_all_ifaces()
-    sniffer.create_socket(15)
+    sniffer.create_socket(18)
 
     # 共享队列，sniffer存储抓到的数据包，parse读取解析
     packet_wait_queue = Queue()
@@ -52,17 +52,17 @@ if __name__ == '__main__':
     sniffer_process.stop()
     print(packet_wait_queue.qsize())
 
-    # TODO: packet_wait_queue保存的是数据包，开始进行解析
-    l2_type, packet, time = packet_wait_queue.get()
-    ip_packet, eth_header = parse_eth(packet)
+    # packet_wait_queue保存的是数据包，开始进行解析
+    l2_type, l2_packet, time = packet_wait_queue.get()
+    l3_packet, l2_header = parse_eth(l2_packet)
 
-    if eth_header[2] == '0x0800':
-        # TODO: parse ipv4
-        parse_ipv4(ip_packet)
+    if l2_header[2] == '0x0800':
+        l4_packet, l3_header = parse_ipv4(l3_packet)
+        # TODO 进一步解析TCP和UDP
     # elif eth_header[2] == '0x0806':
     #     # TODO: parse arp
     # elif eth_header[2] == '0x86dd':
     #     # TODO: parse ipv6
     else:
         # unknown ip protocol
-        print("unknown ip protocol with type:", eth_header[2])
+        print("unknown ip protocol with type:", l2_header[2])
