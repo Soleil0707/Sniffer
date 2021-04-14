@@ -45,9 +45,9 @@ class mySniffer:
         self.socket = None
 
     @staticmethod
-    def show_all_ifaces():
+    def show_all_ifaces(print_res=True):
         """打印所有interface"""
-        return scapy.IFACES.show()
+        return scapy.IFACES.show(print_result=print_res)
 
     def create_socket(self, index):
         """根据打印的索引确定一个interface，然后创建socket绑定用于抓包"""
