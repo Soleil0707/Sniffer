@@ -23,6 +23,12 @@ if __name__ == '__main__':
         ifaces_list.append(iface_column)
 
     gui = gui(sniffer, ifaces_list, packet_wait_queue)
+    """解析包和gui界面的关联：
+        整个包的信息——打印二进制流（list）
+        包头解析出来的信息——展示在左下角（json）
+        包重要信息——展示在包列表中（list）
+        使用包序号作为索引去定位每个包的各个信息
+    """
     # TODO list:
     #  添加抓包的开始暂停功能
     #  选择包，展示包的信息

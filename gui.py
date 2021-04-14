@@ -1,6 +1,8 @@
+import time
 import tkinter as tk
 import tkinter.messagebox
 import sniffer as Sniffer
+import parse as Parse
 from tkinter import ttk
 
 
@@ -240,7 +242,14 @@ class gui:
         # 创建抓包线程
         sniffer_process = Sniffer.sniffer_thread(self.packet_wait_queue, self.sniffer)
         # 开启抓包
-        # sniffer_process.start()
+        sniffer_process.start()
+        # 创建解析包进程
+        parse_process = Parse.parse_thread(self.packet_wait_queue)
+        # 开启解析
+        parse_process.start()
+        time.sleep(1)
+        sniffer_process.pause()
+        parse_process.pause()
 
         # TODO 将数据包插入并保存
         for _ in range(100):
