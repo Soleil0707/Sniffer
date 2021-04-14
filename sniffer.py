@@ -51,11 +51,14 @@ class mySniffer:
 
     def create_socket(self, index):
         """根据打印的索引确定一个interface，然后创建socket绑定用于抓包"""
+        if index < 0:
+            return False
         self.iface = scapy.IFACES.dev_from_index(index)
         # TODO 可以和init函数合并
         # 进行绑定，便于抓包
         # scapy.conf.iface.setmonitor(True)
         self.socket = scapy.conf.L2socket(iface=self.iface)
+        return True
 
     def get_one_packet(self):
         """ 抓取一个数据包
