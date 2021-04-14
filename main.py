@@ -5,9 +5,11 @@ from sniffer import mySniffer
 from sniffer import sniffer_thread
 from queue import Queue
 from parse import *
+from gui import *
 
 
 if __name__ == '__main__':
+    gui = gui()
     # 创建嗅探器，并绑定指定网卡
     # sniffer = mySniffer()
     # sniffer.show_all_ifaces()
@@ -26,4 +28,4 @@ if __name__ == '__main__':
     # packet_wait_queue保存的是数据包，开始进行解析
     # l2_type, l2_packet, time = packet_wait_queue.get()
 
-    parse_pacp_file('test.pcap')
+    # parse_pacp_file('test.pcap')
