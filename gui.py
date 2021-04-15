@@ -7,7 +7,7 @@ from tkinter import ttk
 
 
 def xx():
-    return
+    tk.messagebox.showinfo('通知', '当前选项的功能暂未实现')
 
 
 class gui:
@@ -16,6 +16,11 @@ class gui:
         self.sniffer = sniffer
         self.ifaces_list = ifaces_list
         self.packet_wait_queue = packet_wait_queue
+
+        self.sniffer_process = None
+        self.parse_process = None
+        self.packet_list_after_id = None
+
         # 创建主窗口
         self.root = tk.Tk()
         self.root.title('Sniffer')
@@ -63,9 +68,22 @@ class gui:
 
         self.packet_bin_info.update()
 
-        # text TODO 使用哪种控件还不确定
-        self.packet_bin_data = tk.Label(self.packet_bin_info, text="TODO:展示包的二进制流")
-        self.packet_bin_data.grid(sticky='NSEW')
+        # text
+        # self.packet_bin_data = tk.Label(self.packet_bin_info, text="TODO:展示包的二进制流")
+        # 用于展示二进制流，禁止编辑
+        self.packet_bin = tk.Text(self.packet_bin_info, state=tk.DISABLED)
+        self.packet_bin_Ybar = ttk.Scrollbar(self.packet_bin_info,
+                                             orient=tk.VERTICAL,
+                                             command=self.packet_bin.yview)
+        self.packet_bin_Xbar = ttk.Scrollbar(self.packet_bin_info,
+                                             orient=tk.HORIZONTAL,
+                                             command=self.packet_bin.xview)
+        self.packet_bin.configure(xscrollcommand=self.packet_bin_Xbar.set,
+                                  yscrollcommand=self.packet_bin_Ybar.set)
+
+        self.packet_bin.grid(sticky="NSEW")
+        self.packet_bin_Ybar.grid(row=0, column=1, sticky="NS")
+        self.packet_bin_Xbar.grid(row=1, columnspan=2, sticky="EW")
 
     def create_packet_header_panel(self):
         """创建左下角的包信息预览面板，被start_capture_panel调用"""
@@ -144,22 +162,38 @@ class gui:
         self.packet_list_Ybar.grid(row=0, column=1, sticky="ns")
         self.packet_list_Xbar.grid(row=1, columnspan=2, sticky="ew")
 
+        self.packet_list.bind("<ButtonPress-1>", self.display_packet_info)
+
     def create_menu(self):
         # 创建菜单栏
-        menu = tk.Menu(self.root)
+        self.menu = tk.Menu(self.root)
+        self.menu1 = tk.Menu(self.root)
+
         # 创建菜单栏的一项，tearoff表示？？
-        file_menu = tk.Menu(menu, tearoff=0)
+        self.file_menu = tk.Menu(self.menu, tearoff=0)
         # 创建名为文件的菜单选项
-        menu.add_cascade(label='文件', menu=file_menu)
+        self.menu.add_cascade(label='文件', menu=self.file_menu)
         # 创建文件菜单的子选项（打开），点击时执行command对应的函数
-        file_menu.add_command(label='打开', command=xx)
-        file_menu.add_command(label='打开最近', command=xx)
+        self.file_menu.add_command(label='打开', command=xx)
+        # self.file_menu.add_command(label='打开最近', command=xx)
+        self.file_menu.add_command(label='保存', command=xx)
         # 添加分割线
-        file_menu.add_separator()
+        self.file_menu.add_separator()
         # 创建文件菜单的子选项（退出），点击时执行command对应的函数
-        file_menu.add_command(label='退出', command=self.root.quit)
+        self.file_menu.add_command(label='退出', command=self.root.quit)
+
+        # 创建菜单栏的抓包选项
+        self.capture_menu = tk.Menu(self.menu, tearoff=0)
+        self.menu.add_cascade(label='捕获', menu=self.capture_menu)
+        # self.capture_menu.add_command(label='开始', command=xx)
+        self.capture_menu.add_command(label='停止', command=self.stop_capture)
+        self.capture_menu.add_command(label='重新开始', command=self.start_capture)
+        self.capture_menu.entryconfigure('停止', state=tk.DISABLED)
+        self.capture_menu.entryconfigure('重新开始', state=tk.DISABLED)
+
         # 使菜单显示出来
-        self.root.config(menu=menu)
+        self.root.config(menu=self.menu)
+        # self.file_menu.entryconfigure('打开', state=tk.DISABLED)
 
     def create_ifaces_panel(self, ifaces_list=None):
         """创建打开界面下方的网卡选择面板"""
@@ -211,7 +245,7 @@ class gui:
         row = self.iface_list_treeview.identify_row(event.y)
         # 在第几列，格式为'#2'
         col = self.iface_list_treeview.identify_column(event.x)
-        index = int(row[1:])
+        index = int('0x'+row[1:], 16)
 
         # 界面切换至抓包
         if int(self.ifaces_list[index][0]) < 0:
@@ -219,15 +253,16 @@ class gui:
             return
 
         self.first_panel.destroy()
+        # 进行抓包界面布局
         self.start_capture_panel(self.ifaces_list[index])
 
-    def start_capture_panel(self, ifaces):
-        """被switch_capture_panel函数调用，开启抓包界面
+    def start_capture_panel(self, iface):
+        """被switch_capture_panel函数调用，开启抓包界面。同时启动抓包和解析包的线程
         传入的参数为网卡信息列表，依次为索引值、名称、ipv4、ipv6、mac地址"""
         # 配置每个grid区域的权重，等分成四个区域
         self.root.rowconfigure(0, weight=1)
-        self.root.rowconfigure(1, weight=3)
-        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(1, weight=1)
+        self.root.columnconfigure(0, weight=3)
         self.root.columnconfigure(1, weight=1)
 
         # 创建抓包实时更新面板，位于菜单栏下方
@@ -238,27 +273,70 @@ class gui:
         self.create_packet_bin_panel()
 
         # 进行socket绑定
-        self.sniffer.create_socket(int(ifaces[0]))
-        # 创建抓包线程
-        sniffer_process = Sniffer.sniffer_thread(self.packet_wait_queue, self.sniffer)
-        # 开启抓包
-        sniffer_process.start()
-        # 创建解析包进程
-        parse_process = Parse.parse_thread(self.packet_wait_queue)
-        # 开启解析
-        parse_process.start()
-        time.sleep(1)
-        sniffer_process.pause()
-        parse_process.pause()
+        self.iface = iface
+        self.start_capture()
 
-        # TODO 将数据包插入并保存
-        for _ in range(100):
-            self.packet_list.insert("", "end", value=(_, str(_) + '2', str(_) + '3',
-                                                      str(_) + '4', str(_) + '5',
-                                                      str(_) + '6', str(_) + '7'))
-        # # 定时更新
-        # self.packet_list.after()
-        # # 更新时显示最后一行的内容
+    def display_packets(self):
+        # 确定当前是否有数据包需要display
+        while len(self.parse_process.packet_info) != self.parse_process.packet_display_index:
+            info = self.parse_process.packet_info[self.parse_process.packet_display_index]
+            self.parse_process.packet_display_index += 1
+            self.packet_list.insert("", "end", value=(info['num'], info['time'], info['src_addr'], info['src_port'],
+                                                      info['dst_addr'], info['dst_port'], info['type']))
+        # 更新时跳转至最后一行
         # self.packet_list.yview_moveto(1)
-        self.packet_list.update()
+        # 500ms后再次调用
+        self.packet_list.after(500, self.display_packets)
 
+    def stop_capture(self):
+        if self.sniffer_process:
+            self.sniffer_process.stop()
+        if self.parse_process:
+            self.parse_process.stop()
+        if self.packet_list_after_id:
+            # 将抓到的剩余的包全部展示出来再暂停
+            self.display_packets()
+            self.packet_list.after_cancel(self.packet_list_after_id)
+        self.capture_menu.entryconfigure('停止', state=tk.DISABLED)
+        self.capture_menu.entryconfigure('重新开始', state=tk.ACTIVE)
+
+    def start_capture(self):
+        self.sniffer.create_socket(int(self.iface[0]))
+
+        # 清空界面（在重新开始抓包时清空原有的抓包记录）
+        items = self.packet_list.get_children()
+        for _ in items:
+            self.packet_list.delete(_)
+        self.packet_wait_queue.queue.clear()
+
+        self.capture_menu.entryconfigure('停止', state=tk.ACTIVE)
+        self.capture_menu.entryconfigure('重新开始', state=tk.DISABLED)
+
+        # 创建抓包线程
+        self.sniffer_process = Sniffer.sniffer_thread(self.packet_wait_queue, self.sniffer)
+        # 开启抓包
+        self.sniffer_process.start()
+        # 创建解析包进程
+        self.parse_process = Parse.parse_thread(self.packet_wait_queue)
+        # 开启解析
+        self.parse_process.start()
+        # 调用定时器，每500ms运行一次
+        # 记录id，以便于在暂停时使用after_cancel函数
+        self.packet_list_after_id = self.packet_list.after(500, self.display_packets)
+
+    def display_packet_info(self, event):
+        """点击选中一个包时，调用此函数在下方显示该包的包头信息和二进制数据流"""
+        if not self.parse_process:
+            return
+
+        row = self.packet_list.identify_row(event.y)
+        # list的第一个元素索引为0，所以减1
+        index = int('0x'+row[1:], 16) - 1
+        # TODO 左下方展示packet_heads
+        packet_heads = self.parse_process.packet_head[index]
+        # TODO 右下方展示packet的二进制流
+        packet = self.parse_process.packet_list[index]
+
+        self.packet_bin.insert("end", 'aaa')
+        self.packet_bin.insert("end", 'b')
+        self.packet_bin.update()

@@ -23,7 +23,7 @@ class sniffer_thread(threading.Thread):
             # 网络流量不大时，数据包不多，recv_raw可能返回None
             if l2_packet is not None:
                 self.packet_queue.put((l2_type, l2_packet, time))
-                print("get a packet")
+                # print("get a packet")
 
     def pause(self):
         """ 线程暂停 """

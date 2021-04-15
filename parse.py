@@ -23,8 +23,8 @@ class parse_thread(threading.Thread):
         self.packet_info = list()
         # 记录包的序号，从1开始（不是从0开始）
         self.packet_index = 0
-        # 下一个显示的包的序号
-        self.packet_display_index = 1
+        # 下一个被GUI调用显示出来的包的索引
+        self.packet_display_index = 0
 
         self.__flag = threading.Event()     # 用于暂停线程的标识
         self.__flag.set()       # 设置为True
@@ -40,13 +40,15 @@ class parse_thread(threading.Thread):
             # pkt_time的时间格式为Unix时间戳
             l2_type, l2_packet, pkt_time = self.packet_wait_parse_queue.get()
             self.packet_index += 1
-            self.packet_list.append(l2_packet)
-            # 解析包头json至packet_head
+
             info = new_a_info()
             info['num'] = str(self.packet_index)
             info['time'] = time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime(pkt_time))
+            # 解析数据包，获取各层协议的包头信息，保存在packet_head_json中
             packet_head_json = {}
             info, packet_head_json = parse_a_packet(l2_packet, info, packet_head_json)
+
+            self.packet_list.append(l2_packet)
             self.packet_info.append(info)
             self.packet_head.append(packet_head_json)
 
