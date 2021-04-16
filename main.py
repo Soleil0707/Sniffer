@@ -22,23 +22,12 @@ if __name__ == '__main__':
             _ = _.strip()
         ifaces_list.append(iface_column)
 
+    # 开启图形界面
     gui = gui(sniffer, ifaces_list, packet_wait_queue)
     # TODO list:
-    #  选择包，展示包的信息
     #  添加打开文件功能
     #  添加filter
     #  开始界面的继续改进
     #  包排序功能
     #  包解析应用层，识别流
     #  共享变量的锁问题
-    # 创建嗅探器线程，进行包的捕获
-    # sniffer_process = sniffer_thread(packet_wait_queue, sniffer)
-    # sniffer_process.start()
-    # time.sleep(1)
-    # sniffer_process.stop()
-    # print(packet_wait_queue.qsize())
-
-    # packet_wait_queue保存的是数据包，开始进行解析
-    # l2_type, l2_packet, time = packet_wait_queue.get()
-
-    # parse_pacp_file('test.pcap')

@@ -38,6 +38,9 @@ class sniffer_thread(threading.Thread):
         self.__flag.set()       # 将线程从暂停状态恢复, 如何已经暂停的话
         self.__running.clear()        # 设置为False
 
+    def is_set(self):
+        return self.__running.isSet()
+
 
 class mySniffer:
     def __init__(self):

@@ -1,8 +1,10 @@
+import math
+import struct
 import tkinter as tk
 import tkinter.messagebox
 import sniffer as Sniffer
 import parse as Parse
-from tkinter import ttk
+from tkinter import ttk, filedialog
 
 
 def xx():
@@ -19,6 +21,7 @@ class gui:
         self.sniffer_process = None
         self.parse_process = None
         self.packet_list_after_id = None
+        self.pcap_file = None
 
         # 创建主窗口
         self.root = tk.Tk()
@@ -52,6 +55,7 @@ class gui:
         # 创建下方面板
         self.create_ifaces_panel(ifaces_list=ifaces_list)
 
+        self.root.protocol('WM_DELETE_WINDOW', self.exit_all)
         # 进入消息循环
         self.root.mainloop()
 
@@ -59,16 +63,11 @@ class gui:
         """创建包的二进制数据预览界面，被start_capture_panel调用"""
         # 包二进制数据界面
         self.packet_bin_info = tk.Frame(self.root, bg='lightgray')
-        # packet_info_frame.pack(anchor='s', fill=tk.X, side='bottom')
-        self.packet_bin_info.grid(row=1, column=1, padx=5, pady=5, sticky='NSEW')
-
-        self.packet_bin_info.rowconfigure(0, weight=1)
-        self.packet_bin_info.columnconfigure(0, weight=1)
+        self.packet_bin_info.pack(side=tk.RIGHT, fill=tk.BOTH, expand=tk.TRUE)
 
         self.packet_bin_info.update()
 
         # 用于展示二进制流，禁止编辑
-        # self.packet_bin = tk.Text(self.packet_bin_info, state=tk.DISABLED)
         self.packet_bin = tk.Listbox(self.packet_bin_info, font=('consolas', 10))
         self.packet_bin_Ybar = ttk.Scrollbar(self.packet_bin_info,
                                              orient=tk.VERTICAL,
@@ -79,23 +78,18 @@ class gui:
         self.packet_bin.configure(xscrollcommand=self.packet_bin_Xbar.set,
                                   yscrollcommand=self.packet_bin_Ybar.set)
 
-        self.packet_bin.grid(sticky="NSEW")
-        self.packet_bin_Ybar.grid(row=0, column=1, sticky="NS")
-        self.packet_bin_Xbar.grid(row=1, columnspan=2, sticky="EW")
+        self.packet_bin_Xbar.pack(side=tk.BOTTOM, fill=tk.X)
+        self.packet_bin_Ybar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.packet_bin.pack(side=tk.TOP, fill=tk.BOTH, expand=tk.TRUE)
 
     def create_packet_header_panel(self):
         """创建左下角的包信息预览面板，被start_capture_panel调用"""
         # 包头信息界面
-        self.packet_header_info = tk.Frame(self.root, bg='lightgray')
-        self.packet_header_info.grid(row=1, padx=5, pady=5, sticky='NSEW')
-
-        self.packet_header_info.rowconfigure(0, weight=1)
-        self.packet_header_info.columnconfigure(0, weight=1)
+        self.packet_header_info = tk.Frame(self.root)
+        self.packet_header_info.pack(side=tk.LEFT, fill=tk.BOTH, expand=tk.TRUE)
 
         self.packet_header_info.update()
 
-        # treeview
-        # TODO 在点击时更新内容
         self.packet_header = ttk.Treeview(self.packet_header_info, show='tree')
         self.packet_header_Ybar = ttk.Scrollbar(self.packet_header_info,
                                                 orient=tk.VERTICAL,
@@ -107,9 +101,9 @@ class gui:
         self.packet_header.configure(xscrollcommand=self.packet_header_Xbar.set,
                                      yscrollcommand=self.packet_header_Ybar.set)
         # 各控件位置
-        self.packet_header.grid(row=0, column=0, sticky="NSEW")
-        self.packet_header_Ybar.grid(row=0, column=1, sticky="NS")
-        self.packet_header_Xbar.grid(row=1, columnspan=2, sticky="EW")
+        self.packet_header_Xbar.pack(side=tk.BOTTOM, fill=tk.X)
+        self.packet_header_Ybar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.packet_header.pack(side=tk.TOP, fill=tk.BOTH, expand=tk.TRUE)
 
     def create_packet_list_panel(self):
         """创建包捕获实时更新面板，被start_capture_panel调用"""
@@ -117,10 +111,7 @@ class gui:
         self.packet_list_frame = tk.Frame(self.root)
 
         # 将控件放置在主窗口
-        self.packet_list_frame.grid(row=0, columnspan=2, sticky='NSEW')
-
-        self.packet_list_frame.columnconfigure(0, weight=5)
-        self.packet_list_frame.rowconfigure(0, weight=5)
+        self.packet_list_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=tk.TRUE)
 
         # 更新packet_list_frame的参数
         self.packet_list_frame.update()
@@ -135,7 +126,7 @@ class gui:
                                               orient=tk.VERTICAL,
                                               command=self.packet_list.yview)
 
-        list_width = 200
+        list_width = 100
         self.packet_list.column("1", width=list_width, anchor='center')
         self.packet_list.column("2", width=list_width, anchor='center')
         self.packet_list.column("3", width=list_width, anchor='center')
@@ -156,9 +147,9 @@ class gui:
         self.packet_list.configure(xscrollcommand=self.packet_list_Xbar.set,
                                    yscrollcommand=self.packet_list_Ybar.set)
         # 定义包显示列表的各控件位置
-        self.packet_list.grid(row=0, column=0, sticky="nsew")
-        self.packet_list_Ybar.grid(row=0, column=1, sticky="ns")
-        self.packet_list_Xbar.grid(row=1, columnspan=2, sticky="ew")
+        self.packet_list_Xbar.pack(side=tk.BOTTOM, fill=tk.X)
+        self.packet_list_Ybar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.packet_list.pack(side=tk.TOP, fill=tk.BOTH, expand=tk.TRUE)
 
         self.packet_list.bind("<ButtonPress-1>", self.display_packet_info)
 
@@ -169,43 +160,39 @@ class gui:
 
         # 创建菜单栏的一项，tearoff表示？？
         self.file_menu = tk.Menu(self.menu, tearoff=0)
+
         # 创建名为文件的菜单选项
         self.menu.add_cascade(label='文件', menu=self.file_menu)
+
         # 创建文件菜单的子选项（打开），点击时执行command对应的函数
         self.file_menu.add_command(label='打开', command=xx)
-        # self.file_menu.add_command(label='打开最近', command=xx)
-        self.file_menu.add_command(label='保存', command=xx)
+        self.file_menu.add_command(label='保存', command=self.save_file)
+        self.file_menu.add_command(label='另存为', command=self.save_as)
+
+        self.file_menu.entryconfigure('打开', state=tk.ACTIVE)
+        self.file_menu.entryconfigure('保存', state=tk.DISABLED)
+        self.file_menu.entryconfigure('另存为', state=tk.DISABLED)
+
         # 添加分割线
         self.file_menu.add_separator()
+
         # 创建文件菜单的子选项（退出），点击时执行command对应的函数
-        self.file_menu.add_command(label='退出', command=self.root.quit)
+        self.file_menu.add_command(label='退出', command=self.exit_all)
 
         # 创建菜单栏的抓包选项
         self.menu.add_command(label='停止抓包', command=self.stop_capture)
         self.menu.entryconfigure('停止抓包', state=tk.DISABLED)
         self.menu.add_command(label='重新开始抓包', command=self.start_capture)
         self.menu.entryconfigure('重新开始抓包', state=tk.DISABLED)
-        # self.capture_menu = tk.Menu(self.menu, tearoff=0)
-        # self.menu.add_cascade(label='捕获', menu=self.capture_menu)
-        # self.capture_menu.add_command(label='开始', command=xx)
-        # self.capture_menu.add_command(label='停止', command=self.stop_capture)
-        # self.capture_menu.add_command(label='重新开始', command=self.start_capture)
-        # self.capture_menu.entryconfigure('停止', state=tk.DISABLED)
-        # self.capture_menu.entryconfigure('重新开始', state=tk.DISABLED)
 
         # 使菜单显示出来
         self.root.config(menu=self.menu)
-        # self.file_menu.entryconfigure('打开', state=tk.DISABLED)
 
     def create_ifaces_panel(self, ifaces_list=None):
         """创建打开界面下方的网卡选择面板"""
         # 设计下方界面
         self.ifaces_choose_frame = tk.Frame(self.first_panel)
         self.ifaces_choose_frame.grid(row=1, columnspan=2, sticky='nsew')
-
-        # 保证后面的treeview能够填充整个界面
-        self.ifaces_choose_frame.rowconfigure(0, weight=1)
-        self.ifaces_choose_frame.columnconfigure(0, weight=1)
 
         self.ifaces_choose_frame.update()
 
@@ -231,9 +218,11 @@ class gui:
 
         self.iface_list_treeview.configure(xscrollcommand=self.iface_list_Xbar.set,
                                            yscrollcommand=self.iface_list_Ybar.set)
-        self.iface_list_treeview.grid(row=0, column=0, sticky="nsew")
-        self.iface_list_Ybar.grid(row=0, column=1, sticky="ns")
-        self.iface_list_Xbar.grid(row=1, columnspan=2, sticky="ew")
+
+        self.iface_list_Xbar.pack(side=tk.BOTTOM, fill=tk.X)
+        self.iface_list_Ybar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.iface_list_treeview.pack(side=tk.TOP, expand=tk.TRUE, fill=tk.BOTH)
+
         # 网卡信息插入treeview中
         for ifaces in ifaces_list[1:]:
             self.iface_list_treeview.insert("", "end", value=ifaces)
@@ -260,11 +249,6 @@ class gui:
     def start_capture_panel(self, iface):
         """被switch_capture_panel函数调用，开启抓包界面。同时启动抓包和解析包的线程
         传入的参数为网卡信息列表，依次为索引值、名称、ipv4、ipv6、mac地址"""
-        # 配置每个grid区域的权重，等分成四个区域
-        self.root.rowconfigure(0, weight=1)
-        self.root.rowconfigure(1, weight=1)
-        self.root.columnconfigure(0, weight=3)
-        self.root.columnconfigure(1, weight=1)
 
         # 创建抓包实时更新面板，位于菜单栏下方
         self.create_packet_list_panel()
@@ -279,11 +263,12 @@ class gui:
 
     def display_packets(self):
         # 确定当前是否有数据包需要display
-        while len(self.parse_process.packet_info) != self.parse_process.packet_display_index:
-            info = self.parse_process.packet_info[self.parse_process.packet_display_index]
-            self.parse_process.packet_display_index += 1
-            self.packet_list.insert("", "end", value=(info['num'], info['time'], info['src_addr'], info['src_port'],
-                                                      info['dst_addr'], info['dst_port'], info['type']))
+        if self.parse_process is not None:
+            while len(self.parse_process.packet_info) != self.parse_process.packet_display_index:
+                info = self.parse_process.packet_info[self.parse_process.packet_display_index]
+                self.parse_process.packet_display_index += 1
+                self.packet_list.insert("", "end", value=(info['num'], info['time'], info['src_addr'], info['src_port'],
+                                                          info['dst_addr'], info['dst_port'], info['type']))
         # 更新时跳转至最后一行
         # self.packet_list.yview_moveto(1)
         # 500ms后再次调用
@@ -298,10 +283,13 @@ class gui:
             # 将抓到的剩余的包全部展示出来再暂停
             self.display_packets()
             self.packet_list.after_cancel(self.packet_list_after_id)
-        # self.capture_menu.entryconfigure('停止', state=tk.DISABLED)
+
         self.menu.entryconfigure('停止抓包', state=tk.DISABLED)
-        # self.capture_menu.entryconfigure('重新开始', state=tk.ACTIVE)
         self.menu.entryconfigure('重新开始抓包', state=tk.ACTIVE)
+
+        self.file_menu.entryconfigure('打开', state=tk.ACTIVE)
+        self.file_menu.entryconfigure('保存', state=tk.ACTIVE)
+        self.file_menu.entryconfigure('另存为', state=tk.ACTIVE)
 
     def start_capture(self):
         self.sniffer.create_socket(int(self.iface[0]))
@@ -310,10 +298,12 @@ class gui:
         self.packet_list.delete(*self.packet_list.get_children())
         self.packet_wait_queue.queue.clear()
 
-        # self.capture_menu.entryconfigure('停止', state=tk.ACTIVE)
         self.menu.entryconfigure('停止抓包', state=tk.ACTIVE)
-        # self.capture_menu.entryconfigure('重新开始', state=tk.DISABLED)
         self.menu.entryconfigure('重新开始抓包', state=tk.DISABLED)
+
+        self.file_menu.entryconfigure('打开', state=tk.DISABLED)
+        self.file_menu.entryconfigure('保存', state=tk.DISABLED)
+        self.file_menu.entryconfigure('另存为', state=tk.DISABLED)
 
         # 创建抓包线程
         self.sniffer_process = Sniffer.sniffer_thread(self.packet_wait_queue, self.sniffer)
@@ -334,6 +324,8 @@ class gui:
 
         item = self.packet_list.identify('item', event.x, event.y)
         packet_info = self.packet_list.item(item, 'values')
+        if packet_info == '':
+            return
         # list的第一个元素索引为0，所以减1
         index = int(packet_info[0]) - 1
         print(index)
@@ -342,11 +334,9 @@ class gui:
         packet = self.parse_process.packet_list[index]
         self.display_packet_bin(packet)
 
-        # TODO 左下方展示packet_heads
         packet_heads = self.parse_process.packet_head[index]
-        a = packet_heads[0]
-        print(a)
-        self.packet_header.insert('', 'end', 'eth', text='src,dsrt')
+        self.display_packet_heads(packet_heads)
+        # print(packet_heads)
 
     def display_packet_bin(self, packet):
         """参数为一个完整数据包，调用此函数会将数据包的二进制流输出在右下角"""
@@ -370,5 +360,82 @@ class gui:
                 i = 0
         self.packet_bin.insert(tk.END, a)
 
+    def display_packet_heads(self, packet_heads):
+        # 清空原有内容
+        self.packet_header.delete(*self.packet_header.get_children())
 
+        for layer, header_info in packet_heads.items():
+            iid = self.packet_header.insert('', 'end', text=layer)
+            for key, value in header_info.items():
+                self.packet_header.insert(iid, 'end', text=str(key) + ': ' + str(value))
 
+    def exit_all(self):
+        """关闭全部进程，退出程序"""
+        # 如果仍在抓包
+        if self.sniffer_process is not None and self.sniffer_process.is_set():
+            if tk.messagebox.askokcancel('退出程序', '抓包线程仍在运行，确定退出吗?'):
+                # 退出
+                self.stop_capture()
+                self.root.quit()
+        # 如果未保存
+        else:
+            if tk.messagebox.askokcancel('退出程序', '确定退出吗?'):
+                # 退出
+                self.root.quit()
+
+    def save_file(self):
+        """保存文件"""
+
+        # 如果不存在路径则选择保存的位置"""
+        if self.pcap_file is None or self.pcap_file.closed():
+            self.save_as()
+        # 如果已存在路径则保存在路径中，
+        else:
+            # TODO 将当前抓包数据保存为文件
+            a = 1
+            self.save_packet_as_pcap()
+        # print(self.pcap_file.closed())
+
+    def save_as(self):
+        """选择一个位置进行保存"""
+        file_path = filedialog.asksaveasfilename(
+            filetypes=[('pcap文件', '*.pcap'), ('所有文件', '*.*')]
+        )
+        if file_path:
+            # TODO 将当前抓包数据保存为文件
+            a = 1
+            self.save_packet_as_pcap(file_path)
+
+    def save_packet_as_pcap(self, file_path):
+        """将当前抓包数据保存为文件"""
+        # pcap 文件头
+        data = struct.pack('!I', int('d4c3b2a1', 16))
+        data += struct.pack('!H', int('0200', 16))
+        data += struct.pack('!H', int('0400', 16))
+        data += struct.pack('!I', int('00000000', 16))
+        data += struct.pack('!I', int('00000000', 16))
+        data += struct.pack('!I', int('00000400', 16))
+        data += struct.pack('!I', int('01000000', 16))
+
+        # 6075287d = 1,618,290,813 换算为Unix时间，精确到秒
+        # 000e2077 = 925,815 直接转为ms，小数点后
+        packets = self.parse_process.packet_list
+        pkt_times = self.parse_process.packet_time
+
+        for index in range(min(len(packets), len(pkt_times))):
+            packet, time = packets[index], pkt_times[index]
+            time_low, time_high = math.modf(time)
+            data += struct.pack('!I', int(time_high))
+            data += struct.pack('!I', int(time_low * 10**9))
+            # 数据包大小，单位字节
+            data += struct.pack('!I', len(packet))
+            data += struct.pack('!I', len(packet))
+            data += packet
+
+        try:
+            f = open(file_path, 'wb')
+            f.write(data)
+            f.close()
+        # except Exception:
+        except IOError:
+            tk.messagebox.showwarning('保存', '保存文件失败')

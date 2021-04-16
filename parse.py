@@ -21,6 +21,8 @@ class parse_thread(threading.Thread):
         self.packet_head = list()
         # 提取到的重要信息（每个元素也是一个list，依次为序号 时间 源地址 源端口 目的地址 目的端口 协议类型）
         self.packet_info = list()
+        # 记录每个数据包的时间戳
+        self.packet_time = list()
         # 记录包的序号，从1开始（不是从0开始）
         self.packet_index = 0
         # 下一个被GUI调用显示出来的包的索引
@@ -49,6 +51,7 @@ class parse_thread(threading.Thread):
             info, packet_head_json = parse_a_packet(l2_packet, info, packet_head_json)
 
             self.packet_list.append(l2_packet)
+            self.packet_time.append(pkt_time)
             self.packet_info.append(info)
             self.packet_head.append(packet_head_json)
 
