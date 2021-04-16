@@ -1,4 +1,3 @@
-import time
 import tkinter as tk
 import tkinter.messagebox
 import sniffer as Sniffer
@@ -25,8 +24,8 @@ class gui:
         self.root = tk.Tk()
         self.root.title('Sniffer')
         # 使窗口屏幕居中
-        self.root.geometry('%dx%d' % (self.root.winfo_screenwidth() / 1.5,
-                                      self.root.winfo_screenheight() / 1.5))
+        self.root.geometry('%dx%d' % (self.root.winfo_screenwidth() / 1.3,
+                                      self.root.winfo_screenheight() / 1.3))
         # 窗口最大化，只有windows下能用
         # self.root.state('zoomed')
         # 窗口大小可调整
@@ -71,7 +70,8 @@ class gui:
         # text
         # self.packet_bin_data = tk.Label(self.packet_bin_info, text="TODO:展示包的二进制流")
         # 用于展示二进制流，禁止编辑
-        self.packet_bin = tk.Text(self.packet_bin_info, state=tk.DISABLED)
+        # self.packet_bin = tk.Text(self.packet_bin_info, state=tk.DISABLED)
+        self.packet_bin = tk.Listbox(self.packet_bin_info, font=('consolas', 10))
         self.packet_bin_Ybar = ttk.Scrollbar(self.packet_bin_info,
                                              orient=tk.VERTICAL,
                                              command=self.packet_bin.yview)
@@ -183,13 +183,17 @@ class gui:
         self.file_menu.add_command(label='退出', command=self.root.quit)
 
         # 创建菜单栏的抓包选项
-        self.capture_menu = tk.Menu(self.menu, tearoff=0)
-        self.menu.add_cascade(label='捕获', menu=self.capture_menu)
+        self.menu.add_command(label='停止抓包', command=self.stop_capture)
+        self.menu.entryconfigure('停止抓包', state=tk.DISABLED)
+        self.menu.add_command(label='重新开始抓包', command=self.start_capture)
+        self.menu.entryconfigure('重新开始抓包', state=tk.DISABLED)
+        # self.capture_menu = tk.Menu(self.menu, tearoff=0)
+        # self.menu.add_cascade(label='捕获', menu=self.capture_menu)
         # self.capture_menu.add_command(label='开始', command=xx)
-        self.capture_menu.add_command(label='停止', command=self.stop_capture)
-        self.capture_menu.add_command(label='重新开始', command=self.start_capture)
-        self.capture_menu.entryconfigure('停止', state=tk.DISABLED)
-        self.capture_menu.entryconfigure('重新开始', state=tk.DISABLED)
+        # self.capture_menu.add_command(label='停止', command=self.stop_capture)
+        # self.capture_menu.add_command(label='重新开始', command=self.start_capture)
+        # self.capture_menu.entryconfigure('停止', state=tk.DISABLED)
+        # self.capture_menu.entryconfigure('重新开始', state=tk.DISABLED)
 
         # 使菜单显示出来
         self.root.config(menu=self.menu)
@@ -241,20 +245,19 @@ class gui:
 
     def switch_capture_panel(self, event):
         """双击选择一个iface，切换到抓包界面开始抓包"""
-        # 在第几行，格式为'I003'
-        row = self.iface_list_treeview.identify_row(event.y)
-        # 在第几列，格式为'#2'
-        col = self.iface_list_treeview.identify_column(event.x)
-        index = int('0x'+row[1:], 16)
+        item = self.iface_list_treeview.identify('item', event.x, event.y)
+        iface = self.iface_list_treeview.item(item, 'values')
+
+        index = int(iface[0])
 
         # 界面切换至抓包
-        if int(self.ifaces_list[index][0]) < 0:
-            tk.messagebox.showwarning("警告", '请选择正确的网卡！（索引值为正）')
+        if index <= 1:
+            tk.messagebox.showwarning("警告", '请选择正确的网卡——索引值大于1（不包含1）')
             return
 
         self.first_panel.destroy()
         # 进行抓包界面布局
-        self.start_capture_panel(self.ifaces_list[index])
+        self.start_capture_panel(iface)
 
     def start_capture_panel(self, iface):
         """被switch_capture_panel函数调用，开启抓包界面。同时启动抓包和解析包的线程
@@ -297,20 +300,22 @@ class gui:
             # 将抓到的剩余的包全部展示出来再暂停
             self.display_packets()
             self.packet_list.after_cancel(self.packet_list_after_id)
-        self.capture_menu.entryconfigure('停止', state=tk.DISABLED)
-        self.capture_menu.entryconfigure('重新开始', state=tk.ACTIVE)
+        # self.capture_menu.entryconfigure('停止', state=tk.DISABLED)
+        self.menu.entryconfigure('停止抓包', state=tk.DISABLED)
+        # self.capture_menu.entryconfigure('重新开始', state=tk.ACTIVE)
+        self.menu.entryconfigure('重新开始抓包', state=tk.ACTIVE)
 
     def start_capture(self):
         self.sniffer.create_socket(int(self.iface[0]))
 
         # 清空界面（在重新开始抓包时清空原有的抓包记录）
-        items = self.packet_list.get_children()
-        for _ in items:
-            self.packet_list.delete(_)
+        self.packet_list.delete(*self.packet_list.get_children())
         self.packet_wait_queue.queue.clear()
 
-        self.capture_menu.entryconfigure('停止', state=tk.ACTIVE)
-        self.capture_menu.entryconfigure('重新开始', state=tk.DISABLED)
+        # self.capture_menu.entryconfigure('停止', state=tk.ACTIVE)
+        self.menu.entryconfigure('停止抓包', state=tk.ACTIVE)
+        # self.capture_menu.entryconfigure('重新开始', state=tk.DISABLED)
+        self.menu.entryconfigure('重新开始抓包', state=tk.DISABLED)
 
         # 创建抓包线程
         self.sniffer_process = Sniffer.sniffer_thread(self.packet_wait_queue, self.sniffer)
@@ -329,14 +334,33 @@ class gui:
         if not self.parse_process:
             return
 
-        row = self.packet_list.identify_row(event.y)
+        item = self.packet_list.identify('item', event.x, event.y)
+        packet_info = self.packet_list.item(item, 'values')
         # list的第一个元素索引为0，所以减1
-        index = int('0x'+row[1:], 16) - 1
+        index = int(packet_info[0]) - 1
+        print(index)
         # TODO 左下方展示packet_heads
         packet_heads = self.parse_process.packet_head[index]
-        # TODO 右下方展示packet的二进制流
+
         packet = self.parse_process.packet_list[index]
 
-        self.packet_bin.insert("end", 'aaa')
-        self.packet_bin.insert("end", 'b')
-        self.packet_bin.update()
+        # 清除原有内容
+        self.packet_bin.delete(0, tk.END)
+        # 按格式显示二进制流
+        packet_address = 0
+        i = 0
+        a = ''
+        for bytes_data in packet:
+            if i == 0:
+                a = "%04x" % packet_address + ':  '
+                packet_address += 16
+            a += "%02x" % bytes_data
+            a += ' '
+            i += 1
+            if i == 8:
+                a += '  '
+            if i == 16:
+                self.packet_bin.insert(tk.END, a)
+                i = 0
+        self.packet_bin.insert(tk.END, a)
+
