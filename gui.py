@@ -67,8 +67,6 @@ class gui:
 
         self.packet_bin_info.update()
 
-        # text
-        # self.packet_bin_data = tk.Label(self.packet_bin_info, text="TODO:展示包的二进制流")
         # 用于展示二进制流，禁止编辑
         # self.packet_bin = tk.Text(self.packet_bin_info, state=tk.DISABLED)
         self.packet_bin = tk.Listbox(self.packet_bin_info, font=('consolas', 10))
@@ -98,7 +96,7 @@ class gui:
 
         # treeview
         # TODO 在点击时更新内容
-        self.packet_header = ttk.Treeview(self.packet_header_info)
+        self.packet_header = ttk.Treeview(self.packet_header_info, show='tree')
         self.packet_header_Ybar = ttk.Scrollbar(self.packet_header_info,
                                                 orient=tk.VERTICAL,
                                                 command=self.packet_header.yview)
@@ -339,11 +337,19 @@ class gui:
         # list的第一个元素索引为0，所以减1
         index = int(packet_info[0]) - 1
         print(index)
+
+        # 右下方展示packet_bin
+        packet = self.parse_process.packet_list[index]
+        self.display_packet_bin(packet)
+
         # TODO 左下方展示packet_heads
         packet_heads = self.parse_process.packet_head[index]
+        a = packet_heads[0]
+        print(a)
+        self.packet_header.insert('', 'end', 'eth', text='src,dsrt')
 
-        packet = self.parse_process.packet_list[index]
-
+    def display_packet_bin(self, packet):
+        """参数为一个完整数据包，调用此函数会将数据包的二进制流输出在右下角"""
         # 清除原有内容
         self.packet_bin.delete(0, tk.END)
         # 按格式显示二进制流
@@ -363,4 +369,6 @@ class gui:
                 self.packet_bin.insert(tk.END, a)
                 i = 0
         self.packet_bin.insert(tk.END, a)
+
+
 
