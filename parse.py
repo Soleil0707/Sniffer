@@ -41,17 +41,21 @@ class parse_thread(threading.Thread):
                 continue
             # pkt_time的时间格式为Unix时间戳
             l2_type, l2_packet, pkt_time = self.packet_wait_parse_queue.get()
+            time_high = int(pkt_time)
+            time_low = pkt_time - time_high
+            time_low = int(str(time_low)[2:8])
             self.packet_index += 1
 
             info = new_a_info()
             info['num'] = str(self.packet_index)
-            info['time'] = time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime(pkt_time))
+            info['time'] = time.strftime("%Y %m %d %H:%M:%S", time.localtime(time_high))
+            info['time'] += '.' + str(time_low).ljust(9, '0')
             # 解析数据包，获取各层协议的包头信息，保存在packet_head_json中
             packet_head_json = {}
             info, packet_head_json = parse_a_packet(l2_packet, info, packet_head_json)
 
             self.packet_list.append(l2_packet)
-            self.packet_time.append(pkt_time)
+            self.packet_time.append((time_high, time_low))
             self.packet_info.append(info)
             self.packet_head.append(packet_head_json)
 
@@ -88,20 +92,47 @@ def new_a_info():
     return info
 
 
-def parse_pacp_file(filename):
+def parse_pcap_file(filename):
+    """解析pcap文件
+    :returns: pcap_header, packet_time, packet_list, packet_info, packet_head
+    """
+    packet_time = list()
+    packet_list = list()
+    packet_info = list()
+    packet_head = list()
+    packet_index = 1
+
     pcap = open(filename, 'rb')
+    # 读取pcap文件头的24字节
     pcap_header = pcap.read(24)
 
+    # 读取包头的16字节
     pkt_header = pcap.read(16)
-    time1, time2, cap_len, pkt_len = unpack("IIII", pkt_header)
-    l2_packet = pcap.read(pkt_len)
+    while pkt_header != b'':
+        time_high, time_low, cap_len, pkt_len = unpack("<IIII", pkt_header)
+        l2_packet = pcap.read(pkt_len)
+        if l2_packet == '':
+            break
 
-    # packet_info_list(序号 时间 源地址 源端口 目的地址 目的端口 协议类型)
-    # packet_head_json
-    # packet_bin_list
-    info = new_a_info()
-    packet_head_json = {}
-    parse_a_packet(l2_packet, info, packet_head_json)
+        info = new_a_info()
+        info['num'] = str(packet_index)
+        info['time'] = time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime(time_high))
+        info['time'] += '.' + str(time_low).ljust(9, '0')
+
+        packet_head_json = {}
+        info, packet_head_json = parse_a_packet(l2_packet, info, packet_head_json)
+
+        packet_time.append((time_high, time_low))
+        packet_list.append(l2_packet)
+        packet_info.append(info)
+        packet_head.append(packet_head_json)
+        packet_index += 1
+        # 读取包头的16字节
+        pkt_header = pcap.read(16)
+
+    pcap.close()
+
+    return pcap_header, packet_time, packet_list, packet_info, packet_head
 
 
 def parse_a_packet(packet, info, packet_head_json):

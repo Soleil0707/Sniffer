@@ -25,9 +25,8 @@ if __name__ == '__main__':
     # 开启图形界面
     gui = gui(sniffer, ifaces_list, packet_wait_queue)
     # TODO list:
-    #  添加打开文件功能
-    #  添加filter
-    #  开始界面的继续改进
     #  包排序功能
     #  包解析应用层，识别流
+    #  添加filter
+    #  开始界面的继续改进
     #  共享变量的锁问题

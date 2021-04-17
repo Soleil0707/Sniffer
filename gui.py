@@ -21,7 +21,8 @@ class gui:
         self.sniffer_process = None
         self.parse_process = None
         self.packet_list_after_id = None
-        self.pcap_file = None
+        # 两种工作模式，1表示实时捕获数据包，2表示读取打开的pcap文件
+        self.mode = 0
 
         # 创建主窗口
         self.root = tk.Tk()
@@ -51,13 +52,41 @@ class gui:
         # 下方显示网卡界面
         self.first_panel.rowconfigure(1, weight=1)
         self.first_panel.columnconfigure(1, weight=1)
-        # TODO 创建上方面板,功能为打开pcap文件
+        # 创建上方面板,功能为打开pcap文件
+        self.create_open_panel()
         # 创建下方面板
         self.create_ifaces_panel(ifaces_list=ifaces_list)
 
         self.root.protocol('WM_DELETE_WINDOW', self.exit_all)
         # 进入消息循环
         self.root.mainloop()
+
+    def create_menu(self):
+        # 创建菜单栏
+        self.menu = tk.Menu(self.root)
+
+        # 创建菜单栏的抓包选项
+        self.menu.add_command(label='另存为', command=self.save_as)
+        self.menu.entryconfigure('另存为', state=tk.DISABLED)
+        self.menu.add_command(label='停止抓包', command=self.stop_capture)
+        self.menu.entryconfigure('停止抓包', state=tk.DISABLED)
+        self.menu.add_command(label='重新开始抓包', command=self.start_capture)
+        self.menu.entryconfigure('重新开始抓包', state=tk.DISABLED)
+        self.menu.add_command(label='退出', command=self.exit_all)
+        self.menu.entryconfigure('退出', state=tk.ACTIVE)
+
+        # 使菜单显示出来
+        self.root.config(menu=self.menu)
+
+    def create_open_panel(self):
+        self.open_pcap_frame = tk.Frame(self.first_panel)
+        self.open_pcap_frame.grid(row=0, columnspan=2, sticky='nsew')
+
+        label = tk.Label(self.open_pcap_frame, text='打开', font=('楷书', 20), fg='gray')
+        button = tk.Button(self.open_pcap_frame, text='选择文件路径', command=self.open_pcap_file)
+        label.pack(side=tk.TOP, fill=tk.X)
+        button.pack(side=tk.TOP)
+        # TODO 一个列表存放最近打开的文件路径
 
     def create_packet_bin_panel(self):
         """创建包的二进制数据预览界面，被start_capture_panel调用"""
@@ -117,84 +146,47 @@ class gui:
         self.packet_list_frame.update()
 
         # 定义捕获包的信息显示列表
-        self.packet_list = ttk.Treeview(self.packet_list_frame, show='headings',
-                                        columns=("1", "2", "3", "4", "5", "6", "7"))
+        self.packet_list_treeview = ttk.Treeview(self.packet_list_frame, show='headings',
+                                                 columns=("1", "2", "3", "4", "5", "6", "7"))
         self.packet_list_Xbar = ttk.Scrollbar(self.packet_list_frame,
                                               orient=tk.HORIZONTAL,
-                                              command=self.packet_list.xview)
+                                              command=self.packet_list_treeview.xview)
         self.packet_list_Ybar = ttk.Scrollbar(self.packet_list_frame,
                                               orient=tk.VERTICAL,
-                                              command=self.packet_list.yview)
+                                              command=self.packet_list_treeview.yview)
 
         list_width = 100
-        self.packet_list.column("1", width=list_width, anchor='center')
-        self.packet_list.column("2", width=list_width, anchor='center')
-        self.packet_list.column("3", width=list_width, anchor='center')
-        self.packet_list.column("4", width=list_width, anchor='center')
-        self.packet_list.column("5", width=list_width, anchor='center')
-        self.packet_list.column("6", width=list_width, anchor='center')
-        self.packet_list.column("7", width=list_width, anchor='center')
+        self.packet_list_treeview.column("1", width=list_width, anchor='center')
+        self.packet_list_treeview.column("2", width=list_width, anchor='center')
+        self.packet_list_treeview.column("3", width=list_width, anchor='center')
+        self.packet_list_treeview.column("4", width=list_width, anchor='center')
+        self.packet_list_treeview.column("5", width=list_width, anchor='center')
+        self.packet_list_treeview.column("6", width=list_width, anchor='center')
+        self.packet_list_treeview.column("7", width=list_width, anchor='center')
 
-        self.packet_list.heading("1", text='序号')
-        self.packet_list.heading("2", text='时间')
-        self.packet_list.heading("3", text='源地址')
-        self.packet_list.heading("4", text='源端口')
-        self.packet_list.heading("5", text='目的地址')
-        self.packet_list.heading("6", text='目的端口')
-        self.packet_list.heading("7", text='协议类型')
+        self.packet_list_treeview.heading("1", text='序号')
+        self.packet_list_treeview.heading("2", text='时间')
+        self.packet_list_treeview.heading("3", text='源地址')
+        self.packet_list_treeview.heading("4", text='源端口')
+        self.packet_list_treeview.heading("5", text='目的地址')
+        self.packet_list_treeview.heading("6", text='目的端口')
+        self.packet_list_treeview.heading("7", text='协议类型')
 
         # 设置包信息显示列表的滚动条
-        self.packet_list.configure(xscrollcommand=self.packet_list_Xbar.set,
-                                   yscrollcommand=self.packet_list_Ybar.set)
+        self.packet_list_treeview.configure(xscrollcommand=self.packet_list_Xbar.set,
+                                            yscrollcommand=self.packet_list_Ybar.set)
         # 定义包显示列表的各控件位置
         self.packet_list_Xbar.pack(side=tk.BOTTOM, fill=tk.X)
         self.packet_list_Ybar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.packet_list.pack(side=tk.TOP, fill=tk.BOTH, expand=tk.TRUE)
+        self.packet_list_treeview.pack(side=tk.TOP, fill=tk.BOTH, expand=tk.TRUE)
 
-        self.packet_list.bind("<ButtonPress-1>", self.display_packet_info)
-
-    def create_menu(self):
-        # 创建菜单栏
-        self.menu = tk.Menu(self.root)
-        self.menu1 = tk.Menu(self.root)
-
-        # 创建菜单栏的一项，tearoff表示？？
-        self.file_menu = tk.Menu(self.menu, tearoff=0)
-
-        # 创建名为文件的菜单选项
-        self.menu.add_cascade(label='文件', menu=self.file_menu)
-
-        # 创建文件菜单的子选项（打开），点击时执行command对应的函数
-        self.file_menu.add_command(label='打开', command=xx)
-        self.file_menu.add_command(label='保存', command=self.save_file)
-        self.file_menu.add_command(label='另存为', command=self.save_as)
-
-        self.file_menu.entryconfigure('打开', state=tk.ACTIVE)
-        self.file_menu.entryconfigure('保存', state=tk.DISABLED)
-        self.file_menu.entryconfigure('另存为', state=tk.DISABLED)
-
-        # 添加分割线
-        self.file_menu.add_separator()
-
-        # 创建文件菜单的子选项（退出），点击时执行command对应的函数
-        self.file_menu.add_command(label='退出', command=self.exit_all)
-
-        # 创建菜单栏的抓包选项
-        self.menu.add_command(label='停止抓包', command=self.stop_capture)
-        self.menu.entryconfigure('停止抓包', state=tk.DISABLED)
-        self.menu.add_command(label='重新开始抓包', command=self.start_capture)
-        self.menu.entryconfigure('重新开始抓包', state=tk.DISABLED)
-
-        # 使菜单显示出来
-        self.root.config(menu=self.menu)
+        self.packet_list_treeview.bind("<ButtonPress-1>", self.display_packet_info)
 
     def create_ifaces_panel(self, ifaces_list=None):
         """创建打开界面下方的网卡选择面板"""
         # 设计下方界面
         self.ifaces_choose_frame = tk.Frame(self.first_panel)
         self.ifaces_choose_frame.grid(row=1, columnspan=2, sticky='nsew')
-
-        self.ifaces_choose_frame.update()
 
         self.iface_list_treeview = ttk.Treeview(self.ifaces_choose_frame, show='headings',
                                                 columns=("1", "2", "3", "4", "5"))
@@ -219,6 +211,8 @@ class gui:
         self.iface_list_treeview.configure(xscrollcommand=self.iface_list_Xbar.set,
                                            yscrollcommand=self.iface_list_Ybar.set)
 
+        label = tk.Label(self.ifaces_choose_frame, text='捕获', font=('楷书', 20), fg='gray')
+        label.pack(side=tk.TOP, fill=tk.X)
         self.iface_list_Xbar.pack(side=tk.BOTTOM, fill=tk.X)
         self.iface_list_Ybar.pack(side=tk.RIGHT, fill=tk.Y)
         self.iface_list_treeview.pack(side=tk.TOP, expand=tk.TRUE, fill=tk.BOTH)
@@ -242,13 +236,20 @@ class gui:
             tk.messagebox.showwarning("警告", '请选择正确的网卡——索引值大于1（不包含1）')
             return
 
-        self.first_panel.destroy()
-        # 进行抓包界面布局
-        self.start_capture_panel(iface)
+        # 进行socket绑定
+        self.iface = iface
 
-    def start_capture_panel(self, iface):
+        self.mode = 1
+        # 进行抓包界面布局
+        self.start_capture_panel()
+
+        self.start_capture()
+
+    def start_capture_panel(self):
         """被switch_capture_panel函数调用，开启抓包界面。同时启动抓包和解析包的线程
         传入的参数为网卡信息列表，依次为索引值、名称、ipv4、ipv6、mac地址"""
+
+        self.first_panel.destroy()
 
         # 创建抓包实时更新面板，位于菜单栏下方
         self.create_packet_list_panel()
@@ -257,54 +258,17 @@ class gui:
         # 创建包的二进制数据预览面板, 位于右下角
         self.create_packet_bin_panel()
 
-        # 进行socket绑定
-        self.iface = iface
-        self.start_capture()
-
-    def display_packets(self):
-        # 确定当前是否有数据包需要display
-        if self.parse_process is not None:
-            while len(self.parse_process.packet_info) != self.parse_process.packet_display_index:
-                info = self.parse_process.packet_info[self.parse_process.packet_display_index]
-                self.parse_process.packet_display_index += 1
-                self.packet_list.insert("", "end", value=(info['num'], info['time'], info['src_addr'], info['src_port'],
-                                                          info['dst_addr'], info['dst_port'], info['type']))
-        # 更新时跳转至最后一行
-        # self.packet_list.yview_moveto(1)
-        # 500ms后再次调用
-        self.packet_list.after(500, self.display_packets)
-
-    def stop_capture(self):
-        if self.sniffer_process:
-            self.sniffer_process.stop()
-        if self.parse_process:
-            self.parse_process.stop()
-        if self.packet_list_after_id:
-            # 将抓到的剩余的包全部展示出来再暂停
-            self.display_packets()
-            self.packet_list.after_cancel(self.packet_list_after_id)
-
-        self.menu.entryconfigure('停止抓包', state=tk.DISABLED)
-        self.menu.entryconfigure('重新开始抓包', state=tk.ACTIVE)
-
-        self.file_menu.entryconfigure('打开', state=tk.ACTIVE)
-        self.file_menu.entryconfigure('保存', state=tk.ACTIVE)
-        self.file_menu.entryconfigure('另存为', state=tk.ACTIVE)
-
     def start_capture(self):
-        self.sniffer.create_socket(int(self.iface[0]))
-
-        # 清空界面（在重新开始抓包时清空原有的抓包记录）
-        self.packet_list.delete(*self.packet_list.get_children())
-        self.packet_wait_queue.queue.clear()
-
         self.menu.entryconfigure('停止抓包', state=tk.ACTIVE)
         self.menu.entryconfigure('重新开始抓包', state=tk.DISABLED)
+        self.menu.entryconfigure('另存为', state=tk.DISABLED)
 
-        self.file_menu.entryconfigure('打开', state=tk.DISABLED)
-        self.file_menu.entryconfigure('保存', state=tk.DISABLED)
-        self.file_menu.entryconfigure('另存为', state=tk.DISABLED)
+        # 清空界面（在重新开始抓包时清空原有的抓包记录）
+        self.packet_list_treeview.delete(*self.packet_list_treeview.get_children())
 
+        self.sniffer.create_socket(int(self.iface[0]))
+
+        self.packet_wait_queue.queue.clear()
         # 创建抓包线程
         self.sniffer_process = Sniffer.sniffer_thread(self.packet_wait_queue, self.sniffer)
         # 开启抓包
@@ -315,15 +279,42 @@ class gui:
         self.parse_process.start()
         # 调用定时器，每500ms运行一次
         # 记录id，以便于在暂停时使用after_cancel函数
-        self.packet_list_after_id = self.packet_list.after(500, self.display_packets)
+        self.packet_list_after_id = self.packet_list_treeview.after(500, self.display_packets)
+
+    def stop_capture(self):
+        if self.sniffer_process:
+            self.sniffer_process.stop()
+        if self.parse_process:
+            self.parse_process.stop()
+        if self.packet_list_after_id:
+            # 将抓到的剩余的包全部展示出来再暂停
+            self.display_packets()
+            self.packet_list_treeview.after_cancel(self.packet_list_after_id)
+
+        self.menu.entryconfigure('停止抓包', state=tk.DISABLED)
+        self.menu.entryconfigure('重新开始抓包', state=tk.ACTIVE)
+        self.menu.entryconfigure('另存为', state=tk.ACTIVE)
+
+    def display_packets(self):
+        # 确定当前是否有数据包需要display
+        if self.parse_process is not None:
+            while len(self.parse_process.packet_info) != self.parse_process.packet_display_index:
+                info = self.parse_process.packet_info[self.parse_process.packet_display_index]
+                self.parse_process.packet_display_index += 1
+                self.packet_list_treeview.insert("", "end", value=(info['num'], info['time'], info['src_addr'], info['src_port'],
+                                                                   info['dst_addr'], info['dst_port'], info['type']))
+        # 更新时跳转至最后一行
+        # self.packet_list.yview_moveto(1)
+        # 500ms后再次调用
+        self.packet_list_treeview.after(500, self.display_packets)
 
     def display_packet_info(self, event):
         """点击选中一个包时，调用此函数在下方显示该包的包头信息和二进制数据流"""
-        if not self.parse_process:
+        if self.mode == 1 and not self.parse_process:
             return
 
-        item = self.packet_list.identify('item', event.x, event.y)
-        packet_info = self.packet_list.item(item, 'values')
+        item = self.packet_list_treeview.identify('item', event.x, event.y)
+        packet_info = self.packet_list_treeview.item(item, 'values')
         if packet_info == '':
             return
         # list的第一个元素索引为0，所以减1
@@ -331,12 +322,15 @@ class gui:
         print(index)
 
         # 右下方展示packet_bin
-        packet = self.parse_process.packet_list[index]
-        self.display_packet_bin(packet)
+        if self.mode == 1:
+            packet = self.parse_process.packet_list[index]
+            packet_heads = self.parse_process.packet_head[index]
+        else:
+            packet = self.packet_list[index]
+            packet_heads = self.packet_head[index]
 
-        packet_heads = self.parse_process.packet_head[index]
+        self.display_packet_bin(packet)
         self.display_packet_heads(packet_heads)
-        # print(packet_heads)
 
     def display_packet_bin(self, packet):
         """参数为一个完整数据包，调用此函数会将数据包的二进制流输出在右下角"""
@@ -383,53 +377,59 @@ class gui:
                 # 退出
                 self.root.quit()
 
-    def save_file(self):
-        """保存文件"""
-
-        # 如果不存在路径则选择保存的位置"""
-        if self.pcap_file is None or self.pcap_file.closed():
-            self.save_as()
-        # 如果已存在路径则保存在路径中，
-        else:
-            # TODO 将当前抓包数据保存为文件
-            a = 1
-            self.save_packet_as_pcap()
-        # print(self.pcap_file.closed())
+    # def save_file(self):
+    #     """保存文件"""
+    #     # TODO 这个函数有些鸡肋
+    #     # 如果不存在路径则选择保存的位置"""
+    #     if self.file_path is None:
+    #         self.save_as()
+    #     # 如果已存在路径则保存在路径中，
+    #     else:
+    #         # 将当前抓包数据保存为文件
+    #         self.save_packet_as_pcap(self.file_path)
+    #     # print(self.pcap_file.closed())
 
     def save_as(self):
-        """选择一个位置进行保存"""
+        """另存为，选择一个位置进行保存"""
         file_path = filedialog.asksaveasfilename(
             filetypes=[('pcap文件', '*.pcap'), ('所有文件', '*.*')]
         )
         if file_path:
-            # TODO 将当前抓包数据保存为文件
-            a = 1
-            self.save_packet_as_pcap(file_path)
+            # 将当前抓包数据保存为文件
+            # 区分两种模式
+            if self.mode == 1:
+                # 6075287d = 1,618,290,813 换算为Unix时间，精确到秒
+                # 000e2077 = 925,815 直接转为ms，小数点后
+                self.save_packet_as_pcap(file_path, packets=self.parse_process.packet_list,
+                                         pkt_times=self.parse_process.packet_time)
+            else:
+                # TODO 打开的pcap文件另存为
+                a = 1
+                self.save_packet_as_pcap(file_path, pcap_head=self.pcap_head, packets=self.packet_list, pkt_times=self.packet_time)
 
-    def save_packet_as_pcap(self, file_path):
+    def save_packet_as_pcap(self, file_path, pcap_head=None, packets=None, pkt_times=None):
         """将当前抓包数据保存为文件"""
         # pcap 文件头
-        data = struct.pack('!I', int('d4c3b2a1', 16))
-        data += struct.pack('!H', int('0200', 16))
-        data += struct.pack('!H', int('0400', 16))
-        data += struct.pack('!I', int('00000000', 16))
-        data += struct.pack('!I', int('00000000', 16))
-        data += struct.pack('!I', int('00000400', 16))
-        data += struct.pack('!I', int('01000000', 16))
-
-        # 6075287d = 1,618,290,813 换算为Unix时间，精确到秒
-        # 000e2077 = 925,815 直接转为ms，小数点后
-        packets = self.parse_process.packet_list
-        pkt_times = self.parse_process.packet_time
+        if pcap_head is None:
+            data = struct.pack('!I', int('d4c3b2a1', 16))
+            data += struct.pack('!H', int('0200', 16))
+            data += struct.pack('!H', int('0400', 16))
+            data += struct.pack('!I', int('00000000', 16))
+            data += struct.pack('!I', int('00000000', 16))
+            data += struct.pack('!I', int('00000400', 16))
+            data += struct.pack('!I', int('01000000', 16))
+        else:
+            data = pcap_head
 
         for index in range(min(len(packets), len(pkt_times))):
-            packet, time = packets[index], pkt_times[index]
-            time_low, time_high = math.modf(time)
-            data += struct.pack('!I', int(time_high))
-            data += struct.pack('!I', int(time_low * 10**9))
+            packet = packets[index]
+            time_high, time_low = pkt_times[index]
+            data += struct.pack('<I', time_high)
+            data += struct.pack('<I', time_low)
             # 数据包大小，单位字节
-            data += struct.pack('!I', len(packet))
-            data += struct.pack('!I', len(packet))
+            # 转换为小端
+            data += struct.pack('<I', len(packet))
+            data += struct.pack('<I', len(packet))
             data += packet
 
         try:
@@ -439,3 +439,34 @@ class gui:
         # except Exception:
         except IOError:
             tk.messagebox.showwarning('保存', '保存文件失败')
+            return
+        tk.messagebox.showinfo('保存', '保存成功')
+
+    def open_pcap_file(self):
+        file_path = tk.filedialog.askopenfilename(
+            filetypes=[('pcap文件', '*.pcap')]
+        )
+        if file_path.split('.')[-1] != 'pcap':
+            tk.messagebox.showwarning('打开', '只能解析pcap格式的文件!')
+            return
+        # 打开成功
+        if file_path:
+            self.mode = 2
+            self.pcap_head, self.packet_time, self.packet_list, self.packet_info, self.packet_head \
+                = Parse.parse_pcap_file(file_path)
+
+            self.start_capture_panel()
+
+            self.menu.entryconfigure('停止抓包', state=tk.DISABLED)
+            self.menu.entryconfigure('重新开始抓包', state=tk.DISABLED)
+            self.menu.entryconfigure('另存为', state=tk.ACTIVE)
+
+            index = 0
+            while len(self.packet_info) != index:
+                info = self.packet_info[index]
+                index += 1
+                self.packet_list_treeview.insert('', 'end', value=(info['num'], info['time'], info['src_addr'], info['src_port'],
+                                                                   info['dst_addr'], info['dst_port'], info['type']))
+
+        else:
+            tk.messagebox.showwarning('打开', '文件打开失败')
