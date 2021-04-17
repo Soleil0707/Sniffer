@@ -48,8 +48,8 @@ class parse_thread(threading.Thread):
 
             info = new_a_info()
             info['num'] = str(self.packet_index)
-            info['time'] = time.strftime("%Y %m %d %H:%M:%S", time.localtime(time_high))
-            info['time'] += '.' + str(time_low).ljust(9, '0')
+            info['time'] = time.strftime("%Y年%m月%d日 %H:%M:%S", time.localtime(time_high))
+            # info['time'] += '.' + str(time_low).ljust(9, '0')
             # 解析数据包，获取各层协议的包头信息，保存在packet_head_json中
             packet_head_json = {}
             info, packet_head_json = parse_a_packet(l2_packet, info, packet_head_json)
@@ -116,8 +116,8 @@ def parse_pcap_file(filename):
 
         info = new_a_info()
         info['num'] = str(packet_index)
-        info['time'] = time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime(time_high))
-        info['time'] += '.' + str(time_low).ljust(9, '0')
+        info['time'] = time.strftime("%Y年%m月%d日 %H:%M:%S", time.localtime(time_high))
+        # info['time'] += '.' + str(time_low).ljust(9, '0')
 
         packet_head_json = {}
         info, packet_head_json = parse_a_packet(l2_packet, info, packet_head_json)

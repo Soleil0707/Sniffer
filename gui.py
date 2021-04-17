@@ -1,4 +1,3 @@
-import math
 import struct
 import tkinter as tk
 import tkinter.messagebox
@@ -23,6 +22,8 @@ class gui:
         self.packet_list_after_id = None
         # 两种工作模式，1表示实时捕获数据包，2表示读取打开的pcap文件
         self.mode = 0
+        # 记录点击标题排序时是否逆序
+        self.reverse = True
 
         # 创建主窗口
         self.root = tk.Tk()
@@ -142,8 +143,8 @@ class gui:
         # 将控件放置在主窗口
         self.packet_list_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=tk.TRUE)
 
-        # 更新packet_list_frame的参数
-        self.packet_list_frame.update()
+        # # 更新packet_list_frame的参数
+        # self.packet_list_frame.update()
 
         # 定义捕获包的信息显示列表
         self.packet_list_treeview = ttk.Treeview(self.packet_list_frame, show='headings',
@@ -171,6 +172,12 @@ class gui:
         self.packet_list_treeview.heading("5", text='目的地址')
         self.packet_list_treeview.heading("6", text='目的端口')
         self.packet_list_treeview.heading("7", text='协议类型')
+
+        # 添加点击标题排序的功能
+        for col in ['1', '2', '3', '4', '5', '6', '7']:
+            self.packet_list_treeview.heading(col,
+                                              command=lambda _col=col: self.treeview_sort(self.packet_list_treeview,
+                                                                                          _col, self.reverse))
 
         # 设置包信息显示列表的滚动条
         self.packet_list_treeview.configure(xscrollcommand=self.packet_list_Xbar.set,
@@ -301,8 +308,9 @@ class gui:
             while len(self.parse_process.packet_info) != self.parse_process.packet_display_index:
                 info = self.parse_process.packet_info[self.parse_process.packet_display_index]
                 self.parse_process.packet_display_index += 1
-                self.packet_list_treeview.insert("", "end", value=(info['num'], info['time'], info['src_addr'], info['src_port'],
-                                                                   info['dst_addr'], info['dst_port'], info['type']))
+                self.packet_list_treeview.insert("", "end", value=(info['num'], info['time'], info['src_addr'],
+                                                                   info['src_port'], info['dst_addr'],
+                                                                   info['dst_port'], info['type']))
         # 更新时跳转至最后一行
         # self.packet_list.yview_moveto(1)
         # 500ms后再次调用
@@ -317,7 +325,7 @@ class gui:
         packet_info = self.packet_list_treeview.item(item, 'values')
         if packet_info == '':
             return
-        # list的第一个元素索引为0，所以减1
+        # list的第一个元素索引为0，所以包的序号减1为索引
         index = int(packet_info[0]) - 1
         print(index)
 
@@ -377,18 +385,6 @@ class gui:
                 # 退出
                 self.root.quit()
 
-    # def save_file(self):
-    #     """保存文件"""
-    #     # TODO 这个函数有些鸡肋
-    #     # 如果不存在路径则选择保存的位置"""
-    #     if self.file_path is None:
-    #         self.save_as()
-    #     # 如果已存在路径则保存在路径中，
-    #     else:
-    #         # 将当前抓包数据保存为文件
-    #         self.save_packet_as_pcap(self.file_path)
-    #     # print(self.pcap_file.closed())
-
     def save_as(self):
         """另存为，选择一个位置进行保存"""
         file_path = filedialog.asksaveasfilename(
@@ -403,11 +399,11 @@ class gui:
                 self.save_packet_as_pcap(file_path, packets=self.parse_process.packet_list,
                                          pkt_times=self.parse_process.packet_time)
             else:
-                # TODO 打开的pcap文件另存为
-                a = 1
-                self.save_packet_as_pcap(file_path, pcap_head=self.pcap_head, packets=self.packet_list, pkt_times=self.packet_time)
+                self.save_packet_as_pcap(file_path, pcap_head=self.pcap_head,
+                                         packets=self.packet_list, pkt_times=self.packet_time)
 
-    def save_packet_as_pcap(self, file_path, pcap_head=None, packets=None, pkt_times=None):
+    @staticmethod
+    def save_packet_as_pcap(file_path, pcap_head=None, packets=None, pkt_times=None):
         """将当前抓包数据保存为文件"""
         # pcap 文件头
         if pcap_head is None:
@@ -465,8 +461,28 @@ class gui:
             while len(self.packet_info) != index:
                 info = self.packet_info[index]
                 index += 1
-                self.packet_list_treeview.insert('', 'end', value=(info['num'], info['time'], info['src_addr'], info['src_port'],
-                                                                   info['dst_addr'], info['dst_port'], info['type']))
+                self.packet_list_treeview.insert('', 'end', value=(info['num'], info['time'], info['src_addr'],
+                                                                   info['src_port'], info['dst_addr'],
+                                                                   info['dst_port'], info['type']))
 
         else:
             tk.messagebox.showwarning('打开', '文件打开失败')
+
+    def treeview_sort(self, treeview, col, reverse):
+        """点击标题时调用此函数进行排序, 传入参数为 treeview 列名 排列方式"""
+        items = [(treeview.set(k, col), k) for k in treeview.get_children('')]
+        # print(treeview.get_children(''))
+
+        def sort_accord_int(item):
+            num, col_num = item
+            return -1 if num == '-' else int(num)
+
+        if col == '1' or col == '4' or col == '6':
+            items.sort(reverse=reverse, key=sort_accord_int)  # 排序方式
+        else:
+            items.sort(reverse=reverse)  # 排序方式
+
+        for index, (val, k) in enumerate(items):  # 根据排序后索引移动
+            treeview.move(k, '', index)
+        self.reverse = not reverse
+        treeview.heading(col, command=lambda: self.treeview_sort(treeview, col, self.reverse))  # 重写标题，使之成为再点倒序的标题
