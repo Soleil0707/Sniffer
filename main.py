@@ -1,8 +1,5 @@
-import time
 from sniffer import mySniffer
-from sniffer import sniffer_thread
 from queue import Queue
-from parse import *
 from gui import *
 
 
@@ -25,7 +22,11 @@ if __name__ == '__main__':
     # 开启图形界面
     gui = gui(sniffer, ifaces_list, packet_wait_queue)
     # TODO list:
-    #  包解析应用层，识别流
+    #  包解析应用层
+    #  识别流（创建控件时需要添加列，排序时需要判断列）
     #  添加filter
-    #  开始界面的继续改进
+    #   not  and or
+    #   ip\http\udp\dns
+    #   ip==124.1.1.1
+    #   port==23
     #  共享变量的锁问题

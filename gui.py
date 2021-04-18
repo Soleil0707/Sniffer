@@ -54,7 +54,7 @@ class gui:
         self.first_panel.rowconfigure(1, weight=1)
         self.first_panel.columnconfigure(1, weight=1)
         # 创建上方面板,功能为打开pcap文件
-        self.create_open_panel()
+        self.create_open_file_panel()
         # 创建下方面板
         self.create_ifaces_panel(ifaces_list=ifaces_list)
 
@@ -79,15 +79,14 @@ class gui:
         # 使菜单显示出来
         self.root.config(menu=self.menu)
 
-    def create_open_panel(self):
+    def create_open_file_panel(self):
         self.open_pcap_frame = tk.Frame(self.first_panel)
         self.open_pcap_frame.grid(row=0, columnspan=2, sticky='nsew')
 
         label = tk.Label(self.open_pcap_frame, text='打开', font=('楷书', 20), fg='gray')
         button = tk.Button(self.open_pcap_frame, text='选择文件路径', command=self.open_pcap_file)
         label.pack(side=tk.TOP, fill=tk.X)
-        button.pack(side=tk.TOP)
-        # TODO 一个列表存放最近打开的文件路径
+        button.pack(side=tk.TOP, expand=tk.TRUE)
 
     def create_packet_bin_panel(self):
         """创建包的二进制数据预览界面，被start_capture_panel调用"""
@@ -219,10 +218,16 @@ class gui:
                                            yscrollcommand=self.iface_list_Ybar.set)
 
         label = tk.Label(self.ifaces_choose_frame, text='捕获', font=('楷书', 20), fg='gray')
+        label_filter = tk.Label(self.ifaces_choose_frame, text='   过滤器：  ')
+        self.filter_str = tk.StringVar()
+        self.filter = tk.Entry(self.ifaces_choose_frame, textvariable=self.filter_str)
+
         label.pack(side=tk.TOP, fill=tk.X)
         self.iface_list_Xbar.pack(side=tk.BOTTOM, fill=tk.X)
         self.iface_list_Ybar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.iface_list_treeview.pack(side=tk.TOP, expand=tk.TRUE, fill=tk.BOTH)
+        self.iface_list_treeview.pack(side=tk.BOTTOM, expand=tk.TRUE, fill=tk.BOTH)
+        label_filter.pack(side=tk.LEFT)
+        self.filter.pack(side=tk.TOP, fill=tk.X)
 
         # 网卡信息插入treeview中
         for ifaces in ifaces_list[1:]:
@@ -233,6 +238,13 @@ class gui:
 
     def switch_capture_panel(self, event):
         """双击选择一个iface，切换到抓包界面开始抓包"""
+
+        # 解析过滤器
+        self.filter_id = self.parse_filter()
+        if self.filter_id < 0:
+            tk.messagebox.showwarning('过滤器', '无法解析过滤器，请重新输入')
+            return
+
         item = self.iface_list_treeview.identify('item', event.x, event.y)
         iface = self.iface_list_treeview.item(item, 'values')
 
@@ -249,7 +261,7 @@ class gui:
         self.mode = 1
         # 进行抓包界面布局
         self.start_capture_panel()
-
+        # 开启抓包线程
         self.start_capture()
 
     def start_capture_panel(self):
@@ -281,7 +293,7 @@ class gui:
         # 开启抓包
         self.sniffer_process.start()
         # 创建解析包进程
-        self.parse_process = Parse.parse_thread(self.packet_wait_queue)
+        self.parse_process = Parse.parse_thread(self.packet_wait_queue, self.filter_id, self.filter_str.get())
         # 开启解析
         self.parse_process.start()
         # 调用定时器，每500ms运行一次
@@ -442,11 +454,12 @@ class gui:
         file_path = tk.filedialog.askopenfilename(
             filetypes=[('pcap文件', '*.pcap')]
         )
-        if file_path.split('.')[-1] != 'pcap':
-            tk.messagebox.showwarning('打开', '只能解析pcap格式的文件!')
-            return
         # 打开成功
         if file_path:
+            if file_path.split('.')[-1] != 'pcap':
+                tk.messagebox.showwarning('打开', '只能解析pcap格式的文件!')
+                return
+
             self.mode = 2
             self.pcap_head, self.packet_time, self.packet_list, self.packet_info, self.packet_head \
                 = Parse.parse_pcap_file(file_path)
@@ -464,9 +477,6 @@ class gui:
                 self.packet_list_treeview.insert('', 'end', value=(info['num'], info['time'], info['src_addr'],
                                                                    info['src_port'], info['dst_addr'],
                                                                    info['dst_port'], info['type']))
-
-        else:
-            tk.messagebox.showwarning('打开', '文件打开失败')
 
     def treeview_sort(self, treeview, col, reverse):
         """点击标题时调用此函数进行排序, 传入参数为 treeview 列名 排列方式"""
@@ -486,3 +496,58 @@ class gui:
             treeview.move(k, '', index)
         self.reverse = not reverse
         treeview.heading(col, command=lambda: self.treeview_sort(treeview, col, self.reverse))  # 重写标题，使之成为再点倒序的标题
+
+    def parse_filter(self):
+        """解析输入过滤器的字符串是否符合语法，符合则返回true"""
+        filter_str = self.filter_str.get()
+
+        if filter_str == '':
+            return 0
+
+        # 去除所有空格
+        filter_str = filter_str.replace(' ', '')
+
+        if filter_str == 'tcp':
+            return 1
+        elif filter_str == 'udp':
+            return 2
+        else:
+            filter_str = filter_str.split('==')
+            # ip==1.1.1.1
+            if filter_str[0] == 'ip':
+                return 3
+            # port==23
+            elif filter_str[0] == 'port':
+                return 4
+            # src.ip==1.1.1.1
+            elif filter_str[0] == 'src.ip':
+                return 5
+            # dst.ip==1.1.1.1
+            elif filter_str[0] == 'dst.ip':
+                return 6
+            # src.port==12
+            elif filter_str[0] == 'src.port':
+                return 7
+            # dst.port==12
+            elif filter_str[0] == 'dst.port':
+                return 8
+            # tcp.port==12
+            elif filter_str[0] == 'tcp.port':
+                return 9
+            # udp.port==12
+            elif filter_str[0] == 'udp.port':
+                return 10
+            # tcp.stream==12
+            elif filter_str[0] == 'tcp.stream':
+                return 11
+            # udp.stream==12
+            elif filter_str[0] == 'udp.stream':
+                return 12
+        # 使用ip ip==1.1.1.1 elif re.match('ip==(([01]{0,1}\d{0,1}\d|2[0-4]\d|25[0-5])\.){3}([01]{0,1}\d{0,
+        # 1}\d|2[0-4]\d|25[0-5])', filter_str): 使用端口号过滤 port==12 elif re.match('port==^(6553[0-5]|655[0-2][0-9]|65[
+        # 0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5][0-9]{4}|[1-9][0-9]{1,3}|[0-9])$', filter_str): elif re.match('(
+        # src|dst).ip==(([01]{0,1}\d{0,1}\d|2[0-4]\d|25[0-5])\.){3}([01]{0,1}\d{0,1}\d|2[0-4]\d|25[0-5])',
+        # filter_str): elif re.match('(src|dst|tcp|udp).port==(?:[1-6][0-5]{0,2}?[0-3]?[0-5]?|[1-5][0-9]{0,4})$',
+        # filter_str): elif re.match('(tcp|udp).stream\s*==\s*\d*', filter_str): 更高级的过滤 src.ip==1.1.1.1 dst.port==23
+        # tcp.stream==1 udp.port==44
+        return -1

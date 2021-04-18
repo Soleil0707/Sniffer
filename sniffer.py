@@ -18,7 +18,6 @@ class sniffer_thread(threading.Thread):
     def run(self):
         while self.__running.isSet():
             self.__flag.wait()      # 为True时立即返回, 为False时阻塞直到内部的标识位为True后返回
-            # TODO 进程同步相关操作
             l2_type, l2_packet, time = self.sniffer.get_one_packet()
             # 网络流量不大时，数据包不多，recv_raw可能返回None
             if l2_packet is not None:
@@ -57,7 +56,6 @@ class mySniffer:
         if index < 0:
             return False
         self.iface = scapy.IFACES.dev_from_index(index)
-        # TODO 可以和init函数合并
         # 进行绑定，便于抓包
         # scapy.conf.iface.setmonitor(True)
         self.socket = scapy.conf.L2socket(iface=self.iface)
@@ -69,13 +67,5 @@ class mySniffer:
         返回依次为:链路层数据包类型、数据包数据、时间
         :return: 链路层数据包类型，数据包，时间
         """
-        # TODO: 考虑抓包效率，可能会丢包
         # 调用这个函数 抓取一个数据包
         return self.socket.recv_raw()
-        # while True:
-        #     type, packet, time = self.socket.recv_raw()
-        #     # 网络流量不大时，数据包不多，recv_raw可能返回None
-        #     if packet is None:
-        #         continue
-        #     else:
-        #         return type, packet, time

@@ -8,12 +8,15 @@ import threading
 class parse_thread(threading.Thread):
     """ 自定义解析线程类，相比于threading增加了pause、resume、stop的功能
     并且对run函数做了修改，run会循环执行，每次解析一个数据包，无数据包时会空转
-    TODO: 添加信号量，无包时sleep，有包时被唤醒
     """
-    def __init__(self, packet_queue):
+    def __init__(self, packet_queue, filter_id, filter_str):
         super(parse_thread, self).__init__()
         # 待解析的包队列(每个元素是类型、包、时间的三元组)
         self.packet_wait_parse_queue = packet_queue
+        # filter过滤器的id
+        self.filter_id = filter_id
+        # filter过滤器中的表达式
+        self.filter_str = filter_str
 
         # 捕获到的包队列(每个元素是一个完整的数据包)
         self.packet_list = list()
@@ -36,7 +39,6 @@ class parse_thread(threading.Thread):
     def run(self):
         while self.__running.isSet():
             self.__flag.wait()      # 为True时立即返回, 为False时阻塞直到内部的标识位为True后返回
-            # TODO 进程同步相关操作
             if self.packet_wait_parse_queue.empty():
                 continue
             # pkt_time的时间格式为Unix时间戳
@@ -54,10 +56,15 @@ class parse_thread(threading.Thread):
             packet_head_json = {}
             info, packet_head_json = parse_a_packet(l2_packet, info, packet_head_json)
 
-            self.packet_list.append(l2_packet)
-            self.packet_time.append((time_high, time_low))
-            self.packet_info.append(info)
-            self.packet_head.append(packet_head_json)
+            if filter_packet(self.filter_id, packet_head_json, self.filter_str):
+                # 保留当前包
+                self.packet_list.append(l2_packet)
+                self.packet_time.append((time_high, time_low))
+                self.packet_info.append(info)
+                self.packet_head.append(packet_head_json)
+            else:
+                # 过滤掉当前包
+                self.packet_index -= 1
 
     def pause(self):
         """ 线程暂停 """
@@ -78,6 +85,91 @@ B   8bit
 H   16bit
 I   32bit
 """
+
+
+def filter_packet(filter_id, packet_head_json, filter_str):
+    """根据传入的filter_id确定是否保留数据包，保留则返回True，丢弃数据包则返回False"""
+
+    # 去除所有空格
+    filter_str = filter_str.replace(' ', '').split('==')
+    # 不过滤
+    if filter_id <= 0:
+        return True
+    elif filter_id == 1:
+        # 保留tcp数据包
+        for layer, info in packet_head_json.items():
+            if layer == 'Transmission Control Protocol':
+                return True
+        return False
+    elif filter_id == 2:
+        # 保留udp数据包
+        for layer, info in packet_head_json.items():
+            if layer == 'User Datagram Protocol':
+                return True
+        return False
+    elif filter_id == 3:
+        # ip==1.1.1.1
+        for layer, info in packet_head_json.items():
+            if layer == 'Internet Protocol Version 4':
+                if filter_str[1] == info.get('Source_Address', '') or \
+                   filter_str[1] == info.get('Destination_Address', ''):
+                    return True
+        return False
+    elif filter_id == 4:
+        # port==12
+        for layer, info in packet_head_json.items():
+            if layer == 'User Datagram Protocol' or layer == 'Transmission Control Protocol':
+                if filter_str[1] == str(info.get('Source_Port', '')) or \
+                   filter_str[1] == str(info.get('Destination_Port', '')):
+                    return True
+        return False
+    elif filter_id == 5:
+        # src.ip==1.1.1.1
+        for layer, info in packet_head_json.items():
+            if layer == 'Internet Protocol Version 4':
+                if filter_str[1] == info.get('Source_Address', ''):
+                    return True
+        return False
+    elif filter_id == 6:
+        # dst.ip==1.1.1.1
+        for layer, info in packet_head_json.items():
+            if layer == 'Internet Protocol Version 4':
+                if filter_str[1] == info.get('Destination_Address', ''):
+                    return True
+        return False
+    elif filter_id == 7:
+        # src.port==12
+        for layer, info in packet_head_json.items():
+            if layer == 'User Datagram Protocol' or layer == 'Transmission Control Protocol':
+                if filter_str[1] == str(info.get('Source_Port', '')):
+                    return True
+        return False
+    elif filter_id == 8:
+        # dst.port==12
+        for layer, info in packet_head_json.items():
+            if layer == 'User Datagram Protocol' or layer == 'Transmission Control Protocol':
+                if filter_str[1] == str(info.get('Destination_Port', '')):
+                    return True
+        return False
+    elif filter_id == 9:
+        # tcp.port==12
+        for layer, info in packet_head_json.items():
+            if layer == 'Transmission Control Protocol':
+                if filter_str[1] == str(info.get('Source_Port', '')) or \
+                   filter_str[1] == str(info.get('Destination_Port', '')):
+                    return True
+        return False
+    elif filter_id == 10:
+        # udp.port==12
+        for layer, info in packet_head_json.items():
+            if layer == 'User Datagram Protocol':
+                if filter_str[1] == str(info.get('Source_Port', '')) or \
+                   filter_str[1] == str(info.get('Destination_Port', '')):
+                    return True
+        return False
+    # TODO 11 12 关于 stream，暂未实现
+    else:
+        return True
 
 
 def new_a_info():
