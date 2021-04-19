@@ -148,7 +148,7 @@ class gui:
 
         # 定义捕获包的信息显示列表
         self.packet_list_treeview = ttk.Treeview(self.packet_list_frame, show='headings',
-                                                 columns=("1", "2", "3", "4", "5", "6", "7"))
+                                                 columns=("1", "2", "3", "4", "5", "6", "7", '8'))
         self.packet_list_Xbar = ttk.Scrollbar(self.packet_list_frame,
                                               orient=tk.HORIZONTAL,
                                               command=self.packet_list_treeview.xview)
@@ -164,6 +164,7 @@ class gui:
         self.packet_list_treeview.column("5", width=list_width, anchor='center')
         self.packet_list_treeview.column("6", width=list_width, anchor='center')
         self.packet_list_treeview.column("7", width=list_width, anchor='center')
+        self.packet_list_treeview.column("8", width=list_width, anchor='center')
 
         self.packet_list_treeview.heading("1", text='序号')
         self.packet_list_treeview.heading("2", text='时间')
@@ -172,9 +173,10 @@ class gui:
         self.packet_list_treeview.heading("5", text='目的地址')
         self.packet_list_treeview.heading("6", text='目的端口')
         self.packet_list_treeview.heading("7", text='协议类型')
+        self.packet_list_treeview.heading("8", text='DNS_Stream')
 
         # 添加点击标题排序的功能
-        for col in ['1', '2', '3', '4', '5', '6', '7']:
+        for col in ['1', '2', '3', '4', '5', '6', '7', '8']:
             self.packet_list_treeview.heading(col,
                                               command=lambda _col=col: self.treeview_sort(self.packet_list_treeview,
                                                                                           _col, self.reverse))
@@ -331,10 +333,11 @@ class gui:
             while len(self.parse_process.packet_info) != self.parse_process.packet_display_index:
                 info = self.parse_process.packet_info[self.parse_process.packet_display_index]
                 packet_head = self.parse_process.packet_head[self.parse_process.packet_display_index]
-                if Parse.filter_packet(self.after_capture_filter_id, packet_head, self.after_capture_filter_str.get()):
+                if Parse.filter_packet(self.after_capture_filter_id, packet_head, info, self.after_capture_filter_str.get()):
                     self.packet_list_treeview.insert("", "end", value=(info['num'], info['time'], info['src_addr'],
                                                                        info['src_port'], info['dst_addr'],
-                                                                       info['dst_port'], info['type']))
+                                                                       info['dst_port'], info['type'],
+                                                                       info['dns_stream']))
                 self.parse_process.packet_display_index += 1
         # 更新时跳转至最后一行
         # self.packet_list.yview_moveto(1)
@@ -488,7 +491,8 @@ class gui:
                 index += 1
                 self.packet_list_treeview.insert('', 'end', value=(info['num'], info['time'], info['src_addr'],
                                                                    info['src_port'], info['dst_addr'],
-                                                                   info['dst_port'], info['type']))
+                                                                   info['dst_port'], info['type'],
+                                                                   info['dns_stream']))
 
     def treeview_sort(self, treeview, col, reverse):
         """点击标题时调用此函数进行排序, 传入参数为 treeview 列名 排列方式"""
@@ -499,7 +503,7 @@ class gui:
             num, col_num = item
             return -1 if num == '-' else int(num)
 
-        if col == '1' or col == '4' or col == '6':
+        if col == '1' or col == '4' or col == '6' or col == '8' or col == '9':
             items.sort(reverse=reverse, key=sort_accord_int)  # 排序方式
         else:
             items.sort(reverse=reverse)  # 排序方式
@@ -521,6 +525,8 @@ class gui:
             return 1
         elif filter_str == 'udp':
             return 2
+        elif filter_str == 'dns':
+            return 13
         else:
             filter_str = filter_str.split('==')
             # ip==1.1.1.1
@@ -582,9 +588,10 @@ class gui:
             while len(self.packet_info) != index:
                 info = self.packet_info[index]
                 packet_head = self.packet_head[index]
-                if Parse.filter_packet(self.after_capture_filter_id, packet_head, filter_str):
+                if Parse.filter_packet(self.after_capture_filter_id, packet_head, info, filter_str):
                     self.packet_list_treeview.insert('', 'end', value=(info['num'], info['time'], info['src_addr'],
                                                                        info['src_port'], info['dst_addr'],
-                                                                       info['dst_port'], info['type']))
+                                                                       info['dst_port'], info['type'],
+                                                                       info['dns_stream']))
                 index += 1
 

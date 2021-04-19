@@ -31,6 +31,9 @@ class parse_thread(threading.Thread):
         # 下一个被GUI调用显示出来的包的索引
         self.packet_display_index = 0
 
+        self.dns_stream = list()
+        self.dns_stream_index = 0
+
         self.__flag = threading.Event()     # 用于暂停线程的标识
         self.__flag.set()       # 设置为True
         self.__running = threading.Event()      # 用于停止线程的标识
@@ -54,9 +57,10 @@ class parse_thread(threading.Thread):
             # info['time'] += '.' + str(time_low).ljust(9, '0')
             # 解析数据包，获取各层协议的包头信息，保存在packet_head_json中
             packet_head_json = {}
-            info, packet_head_json = parse_a_packet(l2_packet, info, packet_head_json)
+            info, packet_head_json, self.dns_stream, self.dns_stream_index = \
+                parse_a_packet(l2_packet, info, packet_head_json, self.dns_stream, self.dns_stream_index)
 
-            if filter_packet(self.filter_id, packet_head_json, self.filter_str):
+            if filter_packet(self.filter_id, packet_head_json, info, self.filter_str):
                 # 保留当前包
                 self.packet_list.append(l2_packet)
                 self.packet_time.append((time_high, time_low))
@@ -87,7 +91,7 @@ I   32bit
 """
 
 
-def filter_packet(filter_id, packet_head_json, filter_str):
+def filter_packet(filter_id, packet_head_json, packet_info, filter_str):
     """根据传入的filter_id确定是否保留数据包，保留则返回True，丢弃数据包则返回False"""
 
     # 去除所有空格
@@ -168,6 +172,9 @@ def filter_packet(filter_id, packet_head_json, filter_str):
                     return True
         return False
     # TODO 11 12 关于 stream，暂未实现
+    elif filter_id == 13:
+        # dns
+        return packet_info['type'] == 'DNS'
     else:
         return True
 
@@ -180,7 +187,10 @@ def new_a_info():
             'src_port': '-',
             'dst_addr': '0',
             'dst_port': '-',
-            'type': '-'}
+            'type': '-',
+            'dns_stream': '-',
+            # 'tcp_stream': '-'
+            }
     return info
 
 
@@ -193,6 +203,9 @@ def parse_pcap_file(filename):
     packet_info = list()
     packet_head = list()
     packet_index = 1
+
+    dns_stream = list()
+    dns_stream_index = 0
 
     pcap = open(filename, 'rb')
     # 读取pcap文件头的24字节
@@ -212,7 +225,8 @@ def parse_pcap_file(filename):
         # info['time'] += '.' + str(time_low).ljust(9, '0')
 
         packet_head_json = {}
-        info, packet_head_json = parse_a_packet(l2_packet, info, packet_head_json)
+        info, packet_head_json, dns_stream, dns_stream_index = \
+            parse_a_packet(l2_packet, info, packet_head_json, dns_stream, dns_stream_index)
 
         packet_time.append((time_high, time_low))
         packet_list.append(l2_packet)
@@ -227,7 +241,7 @@ def parse_pcap_file(filename):
     return pcap_header, packet_time, packet_list, packet_info, packet_head
 
 
-def parse_a_packet(packet, info, packet_head_json):
+def parse_a_packet(packet, info, packet_head_json, dns_stream, dns_stream_index):
     """ 解析一个数据包，最后返回info和json
     """
     # 解析数据包的链路层
@@ -245,7 +259,7 @@ def parse_a_packet(packet, info, packet_head_json):
         info['type'] = 'IPv4'
         packet_head_json['Internet Protocol Version 4'] = ip_header
 
-        if ip_header['Protocol'] == 6:
+        if ip_header['Protocol'] == '6':
             # 解析tcp
             app_packet, tcp_header = parse_tcp(trans_packet)
             info['src_port'] = tcp_header['Source_Port']
@@ -253,7 +267,7 @@ def parse_a_packet(packet, info, packet_head_json):
             info['type'] = 'TCP'
             packet_head_json['Transmission Control Protocol'] = tcp_header
 
-        elif ip_header['Protocol'] == 17:
+        elif ip_header['Protocol'] == '17':
             # 解析udp
             app_packet, udp_header = parse_udp(trans_packet)
             info['src_port'] = udp_header['Source_Port']
@@ -261,37 +275,55 @@ def parse_a_packet(packet, info, packet_head_json):
             info['type'] = 'UDP'
             packet_head_json['User Datagram Protocol'] = udp_header
 
-        elif ip_header['Protocol'] == 1:
+            if info['dst_port'] == '53':
+                # 发送DNS请求
+                # 格式：流序号-本机端口号-dns服务器ip
+                dns_stream.append(str(dns_stream_index) + '-' + info['src_port'] + '-' + info['dst_addr'])
+                info['dns_stream'] = dns_stream_index
+                info['type'] = 'DNS'
+                dns_stream_index += 1
+            if info['src_port'] == '53':
+                # 收到DNS应答
+                for item in dns_stream:
+                    index, port, ip = item.split('-')
+                    if port == info['dst_port'] and ip == info['src_addr']:
+                        info['dns_stream'] = index
+                        info['type'] = 'DNS'
+                        dns_stream.remove(item)
+                        break
+
+        elif ip_header['Protocol'] == '1':
             # 解析icmp
             icmp_header = parse_icmp(trans_packet)
             info['type'] = 'ICMP'
             packet_head_json['ICMP'] = icmp_header
-
-        else:
+        # else:
             # 其他类型的协议，未实现
-            print("unknown l4-protocol with protocol:", ip_header['Protocol'], 'in ipv4 header')
+            # print("无法解析IP层头部的字段Protocol(" + ip_header['Protocol'] + ')')
+
     elif eth_header['Type'] == '0x0806':
         arp_header = parse_arp(ip_packet)
         info['type'] = 'ARP'
         packet_head_json['ARP'] = arp_header
-        # print("[ARP] protocol(", eth_header[2], ") can't parse now")
 
     elif eth_header['Type'] == '0x86dd':
-        parse_ipv6(ip_packet)
-        # TODO 更新info中的信息,更新packet——header——json中的信息
+        pkt, ip_header = parse_ipv6(ip_packet)
         info['type'] = 'IPv6'
-        # print("[IPv6] protocol(", eth_header[2], ") can't parse now")
+        info['src_addr'] = ip_header['Source_Address']
+        info['dst_addr'] = ip_header['Destination_Address']
+        packet_head_json['Internet Protocol Version 6'] = ip_header
+
     elif eth_header['Type'] == '0x8864':
-        print("[PPPoE] protocol(", eth_header['Type'], ") can't parse now")
+        print("链路层无法识别[PPPoE]协议")
     elif eth_header['Type'] == '0x8100':
-        print("[802.1Q tag] protocol(", eth_header['Type'], ") can't parse now")
+        print("链路层无法识别[802.1Q tag]协议")
     elif eth_header['Type'] == '0x8847':
-        print("[MPLS Label] protocol(", eth_header['Type'], ") can't parse now")
+        print("链路层无法识别[MPLS Label]协议")
     else:
         # unknown ip protocol
-        print("unknown ip protocol with type:", eth_header['Type'])
+        print("链路层无法识别")
 
-    return info, packet_head_json
+    return info, packet_head_json, dns_stream, dns_stream_index
 
 
 def bytes2mac_addr(addr):
@@ -342,7 +374,7 @@ def parse_ipv4(packet):
     ip_header['Flags'] = header_info[4] >> 13
     ip_header['Fragment_Offset'] = header_info[4] & 0x1fff
     ip_header['Time_to_Live'] = header_info[5]
-    ip_header['Protocol'] = header_info[6]
+    ip_header['Protocol'] = str(header_info[6])
     ip_header['Header_Checksum'] = header_info[7]
     ip_header['Source_Address'] = inet_ntoa(header_info[8])
     ip_header['Destination_Address'] = inet_ntoa(header_info[9])
@@ -363,7 +395,7 @@ def parse_ipv6(packet):
     header_info = unpack("!IHBB16s16s", packet[:40])
 
     ip_header = {}
-    ip_header['Version'] = header_info[0] >> 4
+    ip_header['Version'] = header_info[0] >> 28
     ip_header['Traffic_Class'] = (header_info[0] >> 20) & 0x0ff
     ip_header['Flow_Label'] = header_info[0] & 0xfffff
     # 单位为字节，包括了ipv6扩展头部
@@ -384,12 +416,14 @@ def parse_ipv6(packet):
     ip_header['Source_Address'] = inet_ntop(AF_INET6, header_info[4])
     ip_header['Destination_Address'] = inet_ntop(AF_INET6, header_info[5])
 
-    if ip_header['Next_Header'] == 17:
-        ip_header['Protocol'] = 17
-    elif ip_header['Next_Header'] == 6:
-        ip_header['Protocol'] = 6
-    else:
-        print("Can not parse next_header type:(", ip_header['Next_Header'], ") in ipv6 header")
+    # if ip_header['Next_Header'] == 17:
+    #     # udp
+    #     ip_header['Protocol'] = 17
+    # elif ip_header['Next_Header'] == 6:
+    #     # tcp
+    #     ip_header['Protocol'] = 6
+    # else:
+    #     print("Can not parse next_header type:(", ip_header['Next_Header'], ") in ipv6 header")
 
     return packet[40:], ip_header
 
@@ -401,8 +435,8 @@ def parse_tcp(packet):
     header_info = unpack("!HHIIHHHH", packet[:20])
 
     tcp_header = {}
-    tcp_header['Source_Port'] = header_info[0]
-    tcp_header['Destination_Port'] = header_info[1]
+    tcp_header['Source_Port'] = str(header_info[0])
+    tcp_header['Destination_Port'] = str(header_info[1])
     tcp_header['Sequence_Number'] = header_info[2]
     tcp_header['Acknowledgement_Number'] = header_info[3]
     # 单位是4Bytes
@@ -429,8 +463,8 @@ def parse_udp(packet):
     header_info = unpack("!HHHH", packet[:8])
 
     udp_header = {}
-    udp_header['Source_Port'] = header_info[0]
-    udp_header['Destination_Port'] = header_info[1]
+    udp_header['Source_Port'] = str(header_info[0])
+    udp_header['Destination_Port'] = str(header_info[1])
     udp_header['Length'] = header_info[2]
     udp_header['Checksum'] = header_info[3]
 
@@ -491,5 +525,4 @@ def parse_arp(packet):
 
     return arp_header
 
-# TODO: stp icmpv6
-#  DNS FTP SMTP TLS HTTP
+# TODO: DNS FTP SMTP TLS HTTP
