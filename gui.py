@@ -24,6 +24,7 @@ class gui:
         self.mode = 0
         # 记录点击标题排序时是否逆序
         self.reverse = True
+        self.after_capture_filter_id = 0
 
         # 创建主窗口
         self.root = tk.Tk()
@@ -181,10 +182,20 @@ class gui:
         # 设置包信息显示列表的滚动条
         self.packet_list_treeview.configure(xscrollcommand=self.packet_list_Xbar.set,
                                             yscrollcommand=self.packet_list_Ybar.set)
+
+        label_filter = tk.Label(self.packet_list_frame, text='  过滤器：   ')
+        self.after_capture_filter_str = tk.StringVar()
+        self.after_capture_filter = tk.Entry(self.packet_list_frame, textvariable=self.after_capture_filter_str)
+        self.filter_button = tk.Button(self.packet_list_frame, text='  点击过滤 ', command=self.after_capture_filter_packet)
+
         # 定义包显示列表的各控件位置
         self.packet_list_Xbar.pack(side=tk.BOTTOM, fill=tk.X)
         self.packet_list_Ybar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.packet_list_treeview.pack(side=tk.TOP, fill=tk.BOTH, expand=tk.TRUE)
+        self.packet_list_treeview.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=tk.TRUE)
+
+        label_filter.pack(side=tk.LEFT)
+        self.filter_button.pack(side=tk.RIGHT)
+        self.after_capture_filter.pack(side=tk.LEFT, fill=tk.X, expand=tk.TRUE)
 
         self.packet_list_treeview.bind("<ButtonPress-1>", self.display_packet_info)
 
@@ -240,7 +251,7 @@ class gui:
         """双击选择一个iface，切换到抓包界面开始抓包"""
 
         # 解析过滤器
-        self.filter_id = self.parse_filter()
+        self.filter_id = self.parse_filter(self.filter_str.get())
         if self.filter_id < 0:
             tk.messagebox.showwarning('过滤器', '无法解析过滤器，请重新输入')
             return
@@ -319,10 +330,12 @@ class gui:
         if self.parse_process is not None:
             while len(self.parse_process.packet_info) != self.parse_process.packet_display_index:
                 info = self.parse_process.packet_info[self.parse_process.packet_display_index]
+                packet_head = self.parse_process.packet_head[self.parse_process.packet_display_index]
+                if Parse.filter_packet(self.after_capture_filter_id, packet_head, self.after_capture_filter_str.get()):
+                    self.packet_list_treeview.insert("", "end", value=(info['num'], info['time'], info['src_addr'],
+                                                                       info['src_port'], info['dst_addr'],
+                                                                       info['dst_port'], info['type']))
                 self.parse_process.packet_display_index += 1
-                self.packet_list_treeview.insert("", "end", value=(info['num'], info['time'], info['src_addr'],
-                                                                   info['src_port'], info['dst_addr'],
-                                                                   info['dst_port'], info['type']))
         # 更新时跳转至最后一行
         # self.packet_list.yview_moveto(1)
         # 500ms后再次调用
@@ -414,8 +427,7 @@ class gui:
                 self.save_packet_as_pcap(file_path, pcap_head=self.pcap_head,
                                          packets=self.packet_list, pkt_times=self.packet_time)
 
-    @staticmethod
-    def save_packet_as_pcap(file_path, pcap_head=None, packets=None, pkt_times=None):
+    def save_packet_as_pcap(self, file_path, pcap_head=None, packets=None, pkt_times=None):
         """将当前抓包数据保存为文件"""
         # pcap 文件头
         if pcap_head is None:
@@ -497,10 +509,8 @@ class gui:
         self.reverse = not reverse
         treeview.heading(col, command=lambda: self.treeview_sort(treeview, col, self.reverse))  # 重写标题，使之成为再点倒序的标题
 
-    def parse_filter(self):
+    def parse_filter(self, filter_str):
         """解析输入过滤器的字符串是否符合语法，符合则返回true"""
-        filter_str = self.filter_str.get()
-
         if filter_str == '':
             return 0
 
@@ -551,3 +561,30 @@ class gui:
         # filter_str): elif re.match('(tcp|udp).stream\s*==\s*\d*', filter_str): 更高级的过滤 src.ip==1.1.1.1 dst.port==23
         # tcp.stream==1 udp.port==44
         return -1
+
+    def after_capture_filter_packet(self):
+        """抓包后进行过滤"""
+        filter_str = self.after_capture_filter_str.get()
+
+        # 解析过滤器
+        self.after_capture_filter_id = self.parse_filter(filter_str)
+        if self.after_capture_filter_id < 0:
+            tk.messagebox.showwarning('过滤器', '无法解析过滤器，请重新输入')
+            return
+
+        self.packet_list_treeview.delete(*self.packet_list_treeview.get_children())
+
+        if self.mode == 1:
+            self.parse_process.packet_display_index = 0
+            self.display_packets()
+        else:
+            index = 0
+            while len(self.packet_info) != index:
+                info = self.packet_info[index]
+                packet_head = self.packet_head[index]
+                if Parse.filter_packet(self.after_capture_filter_id, packet_head, filter_str):
+                    self.packet_list_treeview.insert('', 'end', value=(info['num'], info['time'], info['src_addr'],
+                                                                       info['src_port'], info['dst_addr'],
+                                                                       info['dst_port'], info['type']))
+                index += 1
+
